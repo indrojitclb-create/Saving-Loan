@@ -6,7 +6,9 @@ type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 're
 type Employee = {
   id: string; employee_code: string; full_name: string; phone: string | null;
   email: string | null; branch_id: string | null; designation: string | null;
-  address: string | null; joining_date: string | null; closing_date: string | null;
+  address: string | null; village: string | null; post_office: string | null;
+  district: string | null; division: string | null;
+  joining_date: string | null; closing_date: string | null;
   mother_name: string | null; father_name: string | null; spouse_name: string | null;
   is_active: boolean; branch?: { branch_name?: string } | null;
 };
@@ -24,7 +26,8 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
 
 const emptyEmployee = {
   employee_code: '', full_name: '', phone: '', email: '', branch_id: '', designation: '',
-  address: '', joining_date: '', closing_date: '', mother_name: '', father_name: '', spouse_name: '',
+  address: '', village: '', post_office: '', district: '', division: '',
+  joining_date: '', closing_date: '', mother_name: '', father_name: '', spouse_name: '',
 };
 
 export default function App() {
@@ -71,7 +74,7 @@ export default function App() {
     setRole(profileResult.data?.role || '');
     setFullName(profileResult.data?.full_name || '');
     const [employeeResult, branchResult, memberResult, userResult] = await Promise.all([
-      db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
+      db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
       db.from('members').select('id', { count: 'exact', head: true }),
       db.from('profiles').select('id', { count: 'exact', head: true }),
@@ -109,7 +112,9 @@ export default function App() {
       employee_code: employee.employee_code, full_name: employee.full_name,
       phone: employee.phone || '', email: employee.email || '',
       branch_id: employee.branch_id || '', designation: employee.designation || '',
-      address: employee.address || '', joining_date: employee.joining_date || '',
+      address: employee.address || '', village: employee.village || '',
+      post_office: employee.post_office || '', district: employee.district || '',
+      division: employee.division || '', joining_date: employee.joining_date || '',
       closing_date: employee.closing_date || '', mother_name: employee.mother_name || '',
       father_name: employee.father_name || '', spouse_name: employee.spouse_name || '',
     });
@@ -128,6 +133,10 @@ export default function App() {
       branch_id: employeeForm.branch_id || null,
       designation: employeeForm.designation.trim() || null,
       address: employeeForm.address.trim() || null,
+      village: employeeForm.village.trim() || null,
+      post_office: employeeForm.post_office.trim() || null,
+      district: employeeForm.district.trim() || null,
+      division: employeeForm.division.trim() || null,
       joining_date: employeeForm.joining_date || null,
       closing_date: employeeForm.closing_date || null,
       mother_name: employeeForm.mother_name.trim() || null,
@@ -170,7 +179,7 @@ export default function App() {
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return employees;
-    return employees.filter(x => [x.employee_code, x.full_name, x.phone || '', x.email || '', x.designation || '', x.address || '', x.mother_name || '', x.father_name || '', x.spouse_name || '', x.branch?.branch_name || ''].some(v => v.toLowerCase().includes(q)));
+    return employees.filter(x => [x.employee_code, x.full_name, x.phone || '', x.email || '', x.designation || '', x.address || '', x.village || '', x.post_office || '', x.district || '', x.division || '', x.mother_name || '', x.father_name || '', x.spouse_name || '', x.branch?.branch_name || ''].some(v => v.toLowerCase().includes(q)));
   }, [employees, search]);
 
   if (!configured) return <main className="center"><section className="card setup"><div className="logo">S&L</div><p className="eyebrow">SAVINGS & LOAN MANAGEMENT</p><h1>Supabase Configuration সমস্যা</h1><p>{configurationError}</p><p className="muted">Cloudflare Builds-এর Variables পরীক্ষা করে আবার Deploy করুন। Publishable Key গোপন চ্যাটে পাঠাবেন না।</p></section></main>;
@@ -233,13 +242,17 @@ export default function App() {
             <label>স্বামী/স্ত্রীর নাম<input value={employeeForm.spouse_name} onChange={e => setEmployeeForm({ ...employeeForm, spouse_name: e.target.value })} /></label>
             <label>Joining Date<input type="date" value={employeeForm.joining_date} onChange={e => setEmployeeForm({ ...employeeForm, joining_date: e.target.value })} /></label>
             <label>Closing Date<input type="date" value={employeeForm.closing_date} onChange={e => setEmployeeForm({ ...employeeForm, closing_date: e.target.value })} /></label>
-            <label className="wide">ঠিকানা<textarea rows={2} value={employeeForm.address} onChange={e => setEmployeeForm({ ...employeeForm, address: e.target.value })} /></label>
+            <label>গ্রাম / Village<input value={employeeForm.village} onChange={e => setEmployeeForm({ ...employeeForm, village: e.target.value })} /></label>
+            <label>ডাকঘর / Post Office<input value={employeeForm.post_office} onChange={e => setEmployeeForm({ ...employeeForm, post_office: e.target.value })} /></label>
+            <label>জেলা / District<input value={employeeForm.district} onChange={e => setEmployeeForm({ ...employeeForm, district: e.target.value })} /></label>
+            <label>বিভাগ / Division<input value={employeeForm.division} onChange={e => setEmployeeForm({ ...employeeForm, division: e.target.value })} /></label>
+            <label className="wide">অতিরিক্ত ঠিকানা (ঐচ্ছিক)<textarea rows={2} value={employeeForm.address} onChange={e => setEmployeeForm({ ...employeeForm, address: e.target.value })} /></label>
           </div>
           <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}</button><button type="button" className="secondary" onClick={() => setShowEmployeeForm(false)}>বাতিল</button></div>
         </form>}
-        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>কোড</th><th>কর্মীর নাম</th><th>মোবাইল</th><th>পদবি</th><th>ঠিকানা</th><th>Joining Date</th><th>Closing Date</th><th>পিতার নাম</th><th>মাতার নাম</th><th>স্বামী/স্ত্রীর নাম</th><th>শাখা</th><th>অবস্থা</th>{isAdmin && <th>কার্যক্রম</th>}</tr></thead>
-          <tbody>{filteredEmployees.map((x, i) => <tr key={x.id}><td>{i + 1}</td><td>{x.employee_code}</td><td>{x.full_name}</td><td>{x.phone || '—'}</td><td>{x.designation || '—'}</td><td>{x.address || '—'}</td><td>{x.joining_date || '—'}</td><td>{x.closing_date || '—'}</td><td>{x.father_name || '—'}</td><td>{x.mother_name || '—'}</td><td>{x.spouse_name || '—'}</td><td>{x.branch?.branch_name || '—'}</td><td><span className={x.is_active ? 'status on' : 'status off'}>{x.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span></td>{isAdmin && <td><div className="row-actions"><button className="small-action" onClick={() => startEditEmployee(x)}>Edit</button><button className="small-action secondary" onClick={() => toggleEmployee(x)}>{x.is_active ? 'বন্ধ' : 'চালু'}</button></div></td>}</tr>)}
-          {filteredEmployees.length === 0 && <tr><td colSpan={isAdmin ? 14 : 13} className="empty">{pageBusy ? 'তথ্য লোড হচ্ছে...' : 'কোনো Employee পাওয়া যায়নি।'}</td></tr>}</tbody>
+        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>কোড</th><th>কর্মীর নাম</th><th>মোবাইল</th><th>পদবি</th><th>গ্রাম</th><th>ডাকঘর</th><th>জেলা</th><th>বিভাগ</th><th>অতিরিক্ত ঠিকানা</th><th>Joining Date</th><th>Closing Date</th><th>পিতার নাম</th><th>মাতার নাম</th><th>স্বামী/স্ত্রীর নাম</th><th>শাখা</th><th>অবস্থা</th>{isAdmin && <th>কার্যক্রম</th>}</tr></thead>
+          <tbody>{filteredEmployees.map((x, i) => <tr key={x.id}><td>{i + 1}</td><td>{x.employee_code}</td><td>{x.full_name}</td><td>{x.phone || '—'}</td><td>{x.designation || '—'}</td><td>{x.village || '—'}</td><td>{x.post_office || '—'}</td><td>{x.district || '—'}</td><td>{x.division || '—'}</td><td>{x.address || '—'}</td><td>{x.joining_date || '—'}</td><td>{x.closing_date || '—'}</td><td>{x.father_name || '—'}</td><td>{x.mother_name || '—'}</td><td>{x.spouse_name || '—'}</td><td>{x.branch?.branch_name || '—'}</td><td><span className={x.is_active ? 'status on' : 'status off'}>{x.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span></td>{isAdmin && <td><div className="row-actions"><button className="small-action" onClick={() => startEditEmployee(x)}>Edit</button><button className="small-action secondary" onClick={() => toggleEmployee(x)}>{x.is_active ? 'বন্ধ' : 'চালু'}</button></div></td>}</tr>)}
+          {filteredEmployees.length === 0 && <tr><td colSpan={isAdmin ? 18 : 17} className="empty">{pageBusy ? 'তথ্য লোড হচ্ছে...' : 'কোনো Employee পাওয়া যায়নি।'}</td></tr>}</tbody>
         </table></div>
         <div className="branch-list"><h3>শাখার তালিকা ({branches.length})</h3><div className="branch-chips">{branches.map(b => <span key={b.id}>{b.branch_code} · {b.branch_name}{b.area_name ? ' · ' + b.area_name : ''}</span>)}</div></div>
       </section>}
