@@ -109,6 +109,12 @@ export default function App() {
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
       const userList = await db.from('profiles').select('id,full_name,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
+    } else if (profileResult.data?.role === 'assistant_admin') {
+      const ownPermissions = await db.from('profile_permissions').select('can_view').eq('profile_id', session.user.id).eq('module_key', 'users').maybeSingle();
+      if (ownPermissions.data?.can_view) {
+        const userList = await db.from('profiles').select('id,full_name,role,is_active,created_at').order('created_at', { ascending: false });
+        if (!userList.error) setUsers(userList.data || []);
+      }
     }
     setPageBusy(false);
   }, [session?.user?.id]);
