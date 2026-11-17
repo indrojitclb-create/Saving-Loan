@@ -305,6 +305,36 @@ export default function App() {
         </table></div>
         <div className="branch-list"><h3>শাখার তালিকা ({branches.length})</h3><div className="branch-chips">{branches.map(b => <span key={b.id}>{b.branch_code} · {b.branch_name}{b.area_name ? ' · ' + b.area_name : ''}</span>)}</div></div>
       </section>}
+      
+      {active === 'users' && <section className="workspace">
+        <div className="section-head"><div><h2>User Management & Permission</h2><p>Main Admin ও Co-admin User তৈরি এবং অনুমতি নির্ধারণ করতে পারবেন।</p></div><button onClick={() => setShowUserForm(v => !v)}>+ নতুন User</button></div>
+        {showUserForm && <form className="employee-form" onSubmit={createUser}>
+          <div className="form-grid">
+            <label>পূর্ণ নাম *<input required value={userForm.full_name} onChange={e => setUserForm({ ...userForm, full_name: e.target.value })} /></label>
+            <label>Email *<input required type="email" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} /></label>
+            <label>প্রাথমিক Password *<input required type="password" minLength={8} value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} /></label>
+            <label>Role *<select value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
+              {role === 'main_admin' && <option value="main_admin">Main Admin</option>}
+              <option value="co_admin">Co-admin</option><option value="area_manager">Area Manager</option><option value="branch_manager">Branch Manager</option><option value="co">CO</option>
+            </select></label>
+            <label>শাখা<select value={userForm.branch_id} onChange={e => setUserForm({ ...userForm, branch_id: e.target.value })}><option value="">শাখা নির্বাচন</option>{branches.map(b => <option key={b.id} value={b.id}>{b.branch_code} - {b.branch_name}</option>)}</select></label>
+            <label>Employee (CO হলে)<select value={userForm.employee_id} onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })}><option value="">কর্মী নির্বাচন</option>{employees.map(x => <option key={x.id} value={x.id}>{x.employee_code} - {x.full_name}</option>)}</select></label>
+            <label>Area Name (Area Manager হলে)<input value={userForm.area_name} onChange={e => setUserForm({ ...userForm, area_name: e.target.value })} /></label>
+          </div>
+          <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'তৈরি হচ্ছে...' : 'User তৈরি করুন'}</button><button type="button" className="secondary" onClick={() => setShowUserForm(false)}>বাতিল</button></div>
+          <p className="muted">Password কমপক্ষে ৮ অক্ষরের দিন।</p>
+        </form>}
+        <div className="table-wrap"><table><thead><tr><th>নাম</th><th>Role</th><th>Status</th><th>Permission</th></tr></thead><tbody>
+          {users.map(u => <tr key={u.id}><td>{u.full_name}</td><td>{u.role}</td><td>{u.is_active ? 'Active' : 'Inactive'}</td><td><button className="small-action" onClick={() => loadPermissions(u.id)}>Permission নির্ধারণ</button></td></tr>)}
+          {users.length === 0 && <tr><td colSpan={4} className="empty">User তালিকা পাওয়া যায়নি।</td></tr>}
+        </tbody></table></div>
+        {permissionUser && <div className="employee-form"><div className="section-head"><h3>Module Permission</h3><button className="text-button" onClick={() => setPermissionUser('')}>বন্ধ করুন ✕</button></div>
+          <div className="table-wrap"><table><thead><tr><th>Module</th><th>View</th><th>Create</th><th>Update</th><th>Delete</th></tr></thead><tbody>
+            {permissionRows.map((p, i) => <tr key={p.module_key}><td>{moduleLabels[p.module_key]}</td>{(['can_view','can_create','can_update','can_delete'] as const).map(field => <td key={field}><input type="checkbox" checked={p[field]} onChange={e => setPermissionRows(rows => rows.map((x,j) => j === i ? { ...x, [field]: e.target.checked } : x))} /></td>)}</tr>)}
+          </tbody></table></div>
+          <div className="form-actions"><button disabled={pageBusy} onClick={savePermissions}>Permission সংরক্ষণ</button></div>
+        </div>}
+      </section>}
       {active !== 'dashboard' && active !== 'employees' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
