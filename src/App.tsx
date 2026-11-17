@@ -57,7 +57,7 @@ export default function App() {
   const [permissionUser, setPermissionUser] = useState('');
   const [permissionRows, setPermissionRows] = useState<any[]>([]);
   const [myPermissions, setMyPermissions] = useState<any[]>([]);
-  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log' };
+  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log' };
 
   const db: any = supabase;
   const isAdmin = role === 'main_admin' || role === 'co_admin';
