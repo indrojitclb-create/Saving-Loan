@@ -32,7 +32,7 @@ const emptyEmployee = {
 
 export default function App() {
   const [session, setSession] = useState<any>(null);
-  const [email, setEmail] = useState('');
+  const [loginId, setLoginId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,7 @@ export default function App() {
   const [pageBusy, setPageBusy] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [showUserForm, setShowUserForm] = useState(false);
-  const [userForm, setUserForm] = useState({ full_name: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
+  const [userForm, setUserForm] = useState({ full_name: '', login_id: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
   const [permissionUser, setPermissionUser] = useState('');
   const [permissionRows, setPermissionRows] = useState<any[]>([]);
   const [myPermissions, setMyPermissions] = useState<any[]>([]);
@@ -83,7 +83,7 @@ export default function App() {
     if (!session?.user?.id || !db) return;
     setPageBusy(true);
     setError('');
-    const profileResult = await db.from('profiles').select('role,full_name').eq('id', session.user.id).maybeSingle();
+    const profileResult = await db.from('profiles').select('role,full_name,login_id').eq('id', session.user.id).maybeSingle();
     if (profileResult.error) setError('প্রোফাইল পড়া যায়নি: ' + profileResult.error.message);
     setRole(profileResult.data?.role || '');
     setFullName(profileResult.data?.full_name || '');
@@ -107,7 +107,7 @@ export default function App() {
     setMemberCount(memberResult.error ? null : (memberResult.count ?? 0));
     setUserCount(userResult.error ? null : (userResult.count ?? 0));
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
-      const userList = await db.from('profiles').select('id,full_name,role,is_active,created_at').order('created_at', { ascending: false });
+      const userList = await db.from('profiles').select('id,full_name,login_id,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
     } else if (profileResult.data?.role === 'assistant_admin') {
       const ownPermissions = await db.from('profile_permissions').select('can_view').eq('profile_id', session.user.id).eq('module_key', 'users').maybeSingle();
@@ -126,8 +126,20 @@ export default function App() {
     if (!supabase) return;
     setBusy(true); setError('');
     try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-      if (loginError) setError(loginError.message);
+      if (loginId.includes('@')) {
+        const { error: loginError } = await supabase.auth.signInWithPassword({ email: loginId.trim(), password });
+        if (loginError) setError(loginError.message);
+      } else {
+        const { data, error: loginError } = await supabase.functions.invoke('login-by-user-id', {
+          body: { login_id: loginId.trim(), password },
+        });
+        if (loginError) throw loginError;
+        if (data?.error) throw new Error(data.error);
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: data.access_token, refresh_token: data.refresh_token,
+        });
+        if (sessionError) throw sessionError;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login করা যায়নি।');
     } finally { setBusy(false); }
@@ -219,7 +231,7 @@ export default function App() {
       if (invokeError) throw invokeError;
       if (data?.error) throw new Error(data.error);
       setNotice('নতুন User Account তৈরি হয়েছে।');
-      setUserForm({ full_name: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
+      setUserForm({ full_name: '', login_id: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
       setShowUserForm(false);
       await loadData();
     } catch (err) {
@@ -263,7 +275,7 @@ export default function App() {
   if (!session) return (
     <main className="center"><form className="card login" onSubmit={login}>
       <div className="logo">S&L</div><p className="eyebrow">SAVINGS & LOAN MANAGEMENT</p><h1>সিস্টেমে প্রবেশ করুন</h1>
-      <label>Email<input type="email" required value={email} onChange={e => setEmail(e.target.value)} /></label>
+      <label>User ID / Email<input required value={loginId} onChange={e => setLoginId(e.target.value)} /></label>
       <label>Password<input type="password" required value={password} onChange={e => setPassword(e.target.value)} /></label>
       {error && <p className="error">{error}</p>}
       <button disabled={busy}>{busy ? 'অপেক্ষা করুন...' : 'Login'}</button><p className="muted">শুধু অনুমোদিত ব্যবহারকারীরা প্রবেশ করতে পারবেন।</p>
@@ -338,7 +350,8 @@ export default function App() {
         {showUserForm && canDo('users', 'create') && <form className="employee-form" onSubmit={createUser}>
           <div className="form-grid">
             <label>পূর্ণ নাম *<input required value={userForm.full_name} onChange={e => setUserForm({ ...userForm, full_name: e.target.value })} /></label>
-            <label>Email *<input required type="email" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} /></label>
+            <label>Login ID *<input required minLength={3} maxLength={40} value={userForm.login_id} onChange={e => setUserForm({ ...userForm, login_id: e.target.value.toUpperCase() })} placeholder="যেমন: CO001" /></label>
+            <label>Email (ঐচ্ছিক)<input type="email" value={userForm.email} onChange={e => setUserForm({ ...userForm, email: e.target.value })} /></label>
             <label>প্রাথমিক Password *<input required type="password" minLength={8} value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} /></label>
             <label>Role *<select value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
               {role === 'main_admin' && <option value="main_admin">Main Admin</option>}
@@ -351,9 +364,9 @@ export default function App() {
           <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'তৈরি হচ্ছে...' : 'User তৈরি করুন'}</button><button type="button" className="secondary" onClick={() => setShowUserForm(false)}>বাতিল</button></div>
           <p className="muted">Password কমপক্ষে ৮ অক্ষরের দিন।</p>
         </form>}
-        {canDo('users', 'view') && <div className="table-wrap"><table><thead><tr><th>নাম</th><th>Role</th><th>Status</th><th>Permission</th></tr></thead><tbody>
-          {users.map(u => <tr key={u.id}><td>{u.full_name}</td><td>{u.role}</td><td>{u.is_active ? 'Active' : 'Inactive'}</td><td><button className="small-action" onClick={() => loadPermissions(u.id)}>Permission নির্ধারণ</button></td></tr>)}
-          {users.length === 0 && <tr><td colSpan={4} className="empty">User তালিকা পাওয়া যায়নি।</td></tr>}
+        {canDo('users', 'view') && <div className="table-wrap"><table><thead><tr><th>নাম</th><th>User ID</th><th>Role</th><th>Status</th><th>Permission</th></tr></thead><tbody>
+          {users.map(u => <tr key={u.id}><td>{u.full_name}</td><td>{u.login_id || 'পুরোনো Email Login'}</td><td>{u.role}</td><td>{u.is_active ? 'Active' : 'Inactive'}</td><td><button className="small-action" onClick={() => loadPermissions(u.id)}>Permission নির্ধারণ</button></td></tr>)}
+          {users.length === 0 && <tr><td colSpan={5} className="empty">User তালিকা পাওয়া যায়নি।</td></tr>}
         </tbody></table></div>}
         {permissionUser && isAdmin && <div className="employee-form"><div className="section-head"><h3>Module Permission</h3><button className="text-button" onClick={() => setPermissionUser('')}>বন্ধ করুন ✕</button></div>
           <div className="table-wrap"><table><thead><tr><th>Module</th><th>View</th><th>Create</th><th>Update</th><th>Delete</th></tr></thead><tbody>
