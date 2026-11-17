@@ -182,6 +182,45 @@ export default function App() {
     setShowBranchForm(false); await loadData();
   }
 
+
+  async function createUser(e: FormEvent) {
+    e.preventDefault();
+    if (!isAdmin) return;
+    setPageBusy(true); setNotice('');
+    try {
+      const { data, error: invokeError } = await supabase!.functions.invoke('admin-create-user', {
+        body: { ...userForm, branch_id: userForm.branch_id || null, employee_id: userForm.employee_id || null, area_name: userForm.area_name.trim() || null },
+      });
+      if (invokeError) throw invokeError;
+      if (data?.error) throw new Error(data.error);
+      setNotice('নতুন User Account তৈরি হয়েছে।');
+      setUserForm({ full_name: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
+      setShowUserForm(false);
+      await loadData();
+    } catch (err) {
+      setNotice('User তৈরি হয়নি: ' + (err instanceof Error ? err.message : 'অজানা সমস্যা'));
+    } finally { setPageBusy(false); }
+  }
+
+  async function loadPermissions(profileId: string) {
+    setPermissionUser(profileId);
+    const { data, error: permissionError } = await db.from('profile_permissions').select('module_key,can_view,can_create,can_update,can_delete').eq('profile_id', profileId);
+    if (permissionError) { setNotice('Permission পড়া যায়নি: ' + permissionError.message); return; }
+    const current = new Map((data || []).map((x: any) => [x.module_key, x]));
+    setPermissionRows(Object.keys(moduleLabels).map(key => current.get(key) || ({ module_key: key, can_view: false, can_create: false, can_update: false, can_delete: false })));
+  }
+
+  async function savePermissions() {
+    if (!isAdmin || !permissionUser) return;
+    setPageBusy(true); setNotice('');
+    const { error: deleteError } = await db.from('profile_permissions').delete().eq('profile_id', permissionUser);
+    if (deleteError) { setNotice('Permission সংরক্ষণ হয়নি: ' + deleteError.message); setPageBusy(false); return; }
+    const rows = permissionRows.map(x => ({ profile_id: permissionUser, module_key: x.module_key, can_view: x.can_view, can_create: x.can_create, can_update: x.can_update, can_delete: x.can_delete }));
+    const { error: insertError } = await db.from('profile_permissions').insert(rows);
+    setPageBusy(false);
+    setNotice(insertError ? 'Permission সংরক্ষণ হয়নি: ' + insertError.message : 'Permission সংরক্ষণ হয়েছে।');
+  }
+
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return employees;
