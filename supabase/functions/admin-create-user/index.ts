@@ -27,7 +27,18 @@ Deno.serve(async (req) => {
 
   const { data: caller, error: callerError } = await admin.from("profiles")
     .select("role,is_active").eq("id", authData.user.id).single();
-  if (callerError || !caller?.is_active || !["main_admin", "co_admin"].includes(caller.role)) {
+  if (callerError || !caller?.is_active) {
+    return respond({ error: "আপনার User তৈরি করার অনুমতি নেই।" }, 403);
+  }
+
+  let assistantCanCreateUsers = false;
+  if (caller.role === "assistant_admin") {
+    const { data: permission } = await admin.from("profile_permissions")
+      .select("can_create").eq("profile_id", authData.user.id)
+      .eq("module_key", "users").maybeSingle();
+    assistantCanCreateUsers = permission?.can_create === true;
+  }
+  if (!["main_admin", "co_admin"].includes(caller.role) && !assistantCanCreateUsers) {
     return respond({ error: "আপনার User তৈরি করার অনুমতি নেই।" }, 403);
   }
 
@@ -37,8 +48,10 @@ Deno.serve(async (req) => {
   const email = String(body.email || "").trim().toLowerCase();
   const password = String(body.password || "");
   const allowedRoles = caller.role === "main_admin"
-    ? ["main_admin", "co_admin", "area_manager", "branch_manager", "co"]
-    : ["co_admin", "area_manager", "branch_manager", "co"];
+    ? ["main_admin", "co_admin", "assistant_admin", "area_manager", "branch_manager", "co"]
+    : caller.role === "co_admin"
+      ? ["assistant_admin", "area_manager", "branch_manager", "co"]
+      : ["area_manager", "branch_manager", "co"];
   const role = String(body.role || "");
 
   if (!full_name || !email || password.length < 8 || !allowedRoles.includes(role)) {
