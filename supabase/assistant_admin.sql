@@ -1,5 +1,5 @@
 -- Assistant Admin role and permission-based user creation.
--- Run this once in Supabase SQL Editor after the existing schema/security scripts.
+-- Run this in Supabase SQL Editor after the existing schema/security scripts.
 
 alter type public.app_role add value if not exists 'assistant_admin';
 
@@ -27,13 +27,19 @@ as $$
   ), false)
 $$;
 
+-- Main Admin profiles are never visible to Assistant Admins, even when
+-- they have User Management > View permission. Main Admin and Co-admin
+-- retain their existing full profile visibility.
 drop policy if exists profiles_read_scope on public.profiles;
 create policy profiles_read_scope on public.profiles
 for select to authenticated
 using (
   id = (select auth.uid())
   or public.is_admin_or_coadmin()
-  or public.has_module_permission('users', 'view')
+  or (
+    role <> 'main_admin'
+    and public.has_module_permission('users', 'view')
+  )
 );
 
 -- Only Main Admin and Co-admin may assign or change permissions.
