@@ -91,6 +91,10 @@ export default function App() {
     else setBranches(branchResult.data || []);
     setMemberCount(memberResult.error ? null : (memberResult.count ?? 0));
     setUserCount(userResult.error ? null : (userResult.count ?? 0));
+    if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
+      const userList = await db.from('profiles').select('id,full_name,role,is_active,created_at').order('created_at', { ascending: false });
+      if (!userList.error) setUsers(userList.data || []);
+    }
     setPageBusy(false);
   }, [session?.user?.id]);
 
