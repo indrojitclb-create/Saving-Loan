@@ -51,6 +51,12 @@ export default function App() {
   const [showBranchForm, setShowBranchForm] = useState(false);
   const [notice, setNotice] = useState('');
   const [pageBusy, setPageBusy] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [showUserForm, setShowUserForm] = useState(false);
+  const [userForm, setUserForm] = useState({ full_name: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
+  const [permissionUser, setPermissionUser] = useState('');
+  const [permissionRows, setPermissionRows] = useState<any[]>([]);
+  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log' };
 
   const db: any = supabase;
   const isAdmin = role === 'main_admin' || role === 'co_admin';
