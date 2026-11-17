@@ -52,6 +52,7 @@ export default function App() {
   const [notice, setNotice] = useState('');
   const [pageBusy, setPageBusy] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
   const [showUserForm, setShowUserForm] = useState(false);
   const [userForm, setUserForm] = useState({ full_name: '', login_id: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
   const [permissionUser, setPermissionUser] = useState('');
@@ -239,6 +240,26 @@ export default function App() {
     } finally { setPageBusy(false); }
   }
 
+  async function deleteUser(user: any) {
+    if (role !== 'main_admin' || !user?.id || user.id === session?.user?.id || user.role === 'main_admin') return;
+    const confirmed = window.confirm(`আপনি কি নিশ্চিতভাবে ${user.full_name} (${user.login_id || user.role})-এর User Account সম্পূর্ণ মুছে ফেলতে চান? এই কাজ ফিরিয়ে আনা যাবে না।`);
+    if (!confirmed) return;
+    setDeletingUserId(user.id); setNotice('');
+    try {
+      const { data, error: invokeError } = await supabase!.functions.invoke('admin-delete-user', {
+        body: { user_id: user.id },
+      });
+      if (invokeError) throw invokeError;
+      if (data?.error) throw new Error(data.error);
+      setNotice('User Account সম্পূর্ণ মুছে ফেলা হয়েছে।');
+      await loadData();
+    } catch (err) {
+      setNotice('User মুছে ফেলা যায়নি: ' + (err instanceof Error ? err.message : 'অজানা সমস্যা'));
+    } finally {
+      setDeletingUserId(null);
+    }
+  }
+
   async function loadPermissions(profileId: string) {
     setPermissionUser(profileId);
     const { data, error: permissionError } = await db.from('profile_permissions').select('module_key,can_view,can_create,can_update,can_delete').eq('profile_id', profileId);
@@ -364,9 +385,9 @@ export default function App() {
           <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'তৈরি হচ্ছে...' : 'User তৈরি করুন'}</button><button type="button" className="secondary" onClick={() => setShowUserForm(false)}>বাতিল</button></div>
           <p className="muted">Password কমপক্ষে ৮ অক্ষরের দিন।</p>
         </form>}
-        {canDo('users', 'view') && <div className="table-wrap"><table><thead><tr><th>নাম</th><th>User ID</th><th>Role</th><th>Status</th><th>Permission</th></tr></thead><tbody>
-          {users.map(u => <tr key={u.id}><td>{u.full_name}</td><td>{u.login_id || 'পুরোনো Email Login'}</td><td>{u.role}</td><td>{u.is_active ? 'Active' : 'Inactive'}</td><td><button className="small-action" onClick={() => loadPermissions(u.id)}>Permission নির্ধারণ</button></td></tr>)}
-          {users.length === 0 && <tr><td colSpan={5} className="empty">User তালিকা পাওয়া যায়নি।</td></tr>}
+        {canDo('users', 'view') && <div className="table-wrap"><table><thead><tr><th>নাম</th><th>User ID</th><th>Role</th><th>Status</th><th>Permission</th>{role === 'main_admin' && <th>Delete</th>}</tr></thead><tbody>
+          {users.map(u => <tr key={u.id}><td>{u.full_name}</td><td>{u.login_id || 'পুরোনো Email Login'}</td><td>{u.role}</td><td>{u.is_active ? 'Active' : 'Inactive'}</td><td><button className="small-action" onClick={() => loadPermissions(u.id)}>Permission নির্ধারণ</button></td>{role === 'main_admin' && <td>{u.role !== 'main_admin' && u.id !== session.user.id ? <button className="small-action danger" disabled={deletingUserId === u.id || Boolean(deletingUserId)} onClick={() => deleteUser(u)}>{deletingUserId === u.id ? 'মুছছে...' : 'Delete User'}</button> : <span className="muted">সুরক্ষিত</span>}</td>}</tr>)}
+          {users.length === 0 && <tr><td colSpan={role === 'main_admin' ? 6 : 5} className="empty">User তালিকা পাওয়া যায়নি।</td></tr>}
         </tbody></table></div>}
         {permissionUser && isAdmin && <div className="employee-form"><div className="section-head"><h3>Module Permission</h3><button className="text-button" onClick={() => setPermissionUser('')}>বন্ধ করুন ✕</button></div>
           <div className="table-wrap"><table><thead><tr><th>Module</th><th>View</th><th>Create</th><th>Update</th><th>Delete</th></tr></thead><tbody>
