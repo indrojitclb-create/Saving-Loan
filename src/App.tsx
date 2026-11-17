@@ -243,7 +243,13 @@ export default function App() {
     const rows = permissionRows.map(x => ({ profile_id: permissionUser, module_key: x.module_key, can_view: x.can_view, can_create: x.can_create, can_update: x.can_update, can_delete: x.can_delete }));
     const { error: insertError } = await db.from('profile_permissions').insert(rows);
     setPageBusy(false);
-    setNotice(insertError ? 'Permission সংরক্ষণ হয়নি: ' + insertError.message : 'Permission সংরক্ষণ হয়েছে।');
+    if (insertError) {
+      setNotice('Permission সংরক্ষণ হয়নি: ' + insertError.message);
+      return;
+    }
+    setNotice('Permission সংরক্ষণ হয়েছে।');
+    setPermissionUser('');
+    setPermissionRows([]);
   }
 
   const filteredEmployees = useMemo(() => {
