@@ -27,18 +27,20 @@ as $$
   ), false)
 $$;
 
--- Main Admin profiles are never visible to Assistant Admins, even when
--- they have User Management > View permission. Main Admin and Co-admin
--- retain their existing full profile visibility.
+-- Main Admin profile is visible only to the Main Admin account itself.
+-- Co-admin, Assistant Admin, and all other users cannot read it.
 drop policy if exists profiles_read_scope on public.profiles;
 create policy profiles_read_scope on public.profiles
 for select to authenticated
 using (
   id = (select auth.uid())
-  or public.is_admin_or_coadmin()
+  or public.current_app_role() = 'main_admin'
   or (
     role <> 'main_admin'
-    and public.has_module_permission('users', 'view')
+    and (
+      public.current_app_role() = 'co_admin'
+      or public.has_module_permission('users', 'view')
+    )
   )
 );
 
