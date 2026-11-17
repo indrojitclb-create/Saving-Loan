@@ -56,10 +56,18 @@ export default function App() {
   const [userForm, setUserForm] = useState({ full_name: '', email: '', password: '', role: 'co', branch_id: '', employee_id: '', area_name: '' });
   const [permissionUser, setPermissionUser] = useState('');
   const [permissionRows, setPermissionRows] = useState<any[]>([]);
+  const [myPermissions, setMyPermissions] = useState<any[]>([]);
   const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log' };
 
   const db: any = supabase;
   const isAdmin = role === 'main_admin' || role === 'co_admin';
+  const canDo = (moduleKey: string, action: 'view' | 'create' | 'update' | 'delete') => {
+    if (isAdmin) return true;
+    if (moduleKey === 'dashboard' && action === 'view') return true;
+    const permission = myPermissions.find(x => x.module_key === moduleKey);
+    return Boolean(permission?.[`can_${action}`]);
+  };
+  const visibleMenu = menu.filter(x => x.key === 'dashboard' || canDo(x.key, 'view'));
 
   useEffect(() => {
     if (!supabase) return;
@@ -79,6 +87,13 @@ export default function App() {
     if (profileResult.error) setError('প্রোফাইল পড়া যায়নি: ' + profileResult.error.message);
     setRole(profileResult.data?.role || '');
     setFullName(profileResult.data?.full_name || '');
+    if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
+      setMyPermissions([]);
+    } else {
+      const ownPermissions = await db.from('profile_permissions').select('module_key,can_view,can_create,can_update,can_delete').eq('profile_id', session.user.id);
+      if (ownPermissions.error) setError('আপনার Permission পড়া যায়নি: ' + ownPermissions.error.message);
+      setMyPermissions(ownPermissions.data || []);
+    }
     const [employeeResult, branchResult, memberResult, userResult] = await Promise.all([
       db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
@@ -133,7 +148,7 @@ export default function App() {
 
   async function saveEmployee(e: FormEvent) {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!canDo('employees', editingId ? 'update' : 'create')) return;
     setPageBusy(true); setNotice('');
     const payload = {
       employee_code: employeeForm.employee_code.trim(),
@@ -164,7 +179,7 @@ export default function App() {
   }
 
   async function toggleEmployee(employee: Employee) {
-    if (!isAdmin) return;
+    if (!canDo('employees', 'update')) return;
     const result = await db.from('employees').update({ is_active: !employee.is_active }).eq('id', employee.id);
     if (result.error) setNotice('পরিবর্তন হয়নি: ' + result.error.message);
     else { setNotice(employee.is_active ? 'কর্মী নিষ্ক্রিয় করা হয়েছে।' : 'কর্মী সক্রিয় করা হয়েছে।'); await loadData(); }
@@ -172,7 +187,7 @@ export default function App() {
 
   async function saveBranch(e: FormEvent) {
     e.preventDefault();
-    if (!isAdmin) return;
+    if (!canDo('employees', 'create')) return;
     setPageBusy(true); setNotice('');
     const result = await db.from('branches').insert({
       branch_code: branchForm.branch_code.trim(),
@@ -243,12 +258,12 @@ export default function App() {
     </form></main>
   );
 
-  const selected = menu.find(x => x.key === active)!;
+  const selected = visibleMenu.find(x => x.key === active) || visibleMenu[0] || menu[0];
   const activeEmployees = employees.filter(x => x.is_active).length;
   return <div className="shell">
     <aside className="side">
       <div className="brand"><div className="logo small">S&L</div><span><b>Saving & Loan</b><small>Management System</small></span></div>
-      <nav>{menu.map(x => <button key={x.key} className={active === x.key ? 'nav active' : 'nav'} onClick={() => setActive(x.key)}>{x.label}</button>)}</nav>
+      <nav>{visibleMenu.map(x => <button key={x.key} className={active === x.key ? 'nav active' : 'nav'} onClick={() => setActive(x.key)}>{x.label}</button>)}</nav>
       <div className="side-user"><b>{fullName || session.user.email}</b><small>{role || 'Role not assigned'}</small></div>
       <button className="logout" onClick={() => supabase?.auth.signOut()}>Logout</button>
     </aside>
@@ -268,16 +283,16 @@ export default function App() {
         <p className="muted dashboard-foot">সক্রিয় User Account: {userCount ?? 'অনুমতি নেই'}</p>
       </>}
       {active === 'employees' && <section className="workspace">
-        <div className="section-head"><div><h2>কর্মী ব্যবস্থাপনা</h2><p>কর্মীর তথ্য যোগ, খোঁজা ও হালনাগাদ করুন।</p></div>{isAdmin && <button onClick={startNewEmployee}>+ নতুন Employee</button>}</div>
-        {!isAdmin && <div className="notice">আপনার অ্যাকাউন্টে Employee পরিচালনার অনুমতি নেই।</div>}
-        <div className="toolbar"><input placeholder="নাম, কোড, মোবাইল বা শাখা দিয়ে খুঁজুন..." value={search} onChange={e => setSearch(e.target.value)} /><span>{filteredEmployees.length} জন কর্মী</span>{isAdmin && <button className="secondary" onClick={() => setShowBranchForm(v => !v)}>+ নতুন শাখা</button>}</div>
-        {showBranchForm && <form className="inline-form" onSubmit={saveBranch}>
+        <div className="section-head"><div><h2>কর্মী ব্যবস্থাপনা</h2><p>কর্মীর তথ্য যোগ, খোঁজা ও হালনাগাদ করুন।</p></div>{canDo('employees', 'create') && <button onClick={startNewEmployee}>+ নতুন Employee</button>}</div>
+        {!canDo('employees', 'view') && <div className="notice">আপনার Employee List দেখার অনুমতি নেই।</div>}
+        <div className="toolbar"><input placeholder="নাম, কোড, মোবাইল বা শাখা দিয়ে খুঁজুন..." value={search} onChange={e => setSearch(e.target.value)} /><span>{filteredEmployees.length} জন কর্মী</span>{canDo('employees', 'create') && <button className="secondary" onClick={() => setShowBranchForm(v => !v)}>+ নতুন শাখা</button>}</div>
+        {canDo('employees', 'create') && showBranchForm && <form className="inline-form" onSubmit={saveBranch}>
           <label>শাখা কোড<input required value={branchForm.branch_code} onChange={e => setBranchForm({ ...branchForm, branch_code: e.target.value })} /></label>
           <label>শাখার নাম<input required value={branchForm.branch_name} onChange={e => setBranchForm({ ...branchForm, branch_name: e.target.value })} /></label>
           <label>এরিয়া<input value={branchForm.area_name} onChange={e => setBranchForm({ ...branchForm, area_name: e.target.value })} /></label>
           <button disabled={pageBusy}>শাখা সংরক্ষণ</button>
         </form>}
-        {showEmployeeForm && <form className="employee-form" onSubmit={saveEmployee}>
+        {canDo('employees', editingId ? 'update' : 'create') && showEmployeeForm && <form className="employee-form" onSubmit={saveEmployee}>
           <div className="section-head"><h3>{editingId ? 'Employee তথ্য সম্পাদনা' : 'নতুন Employee যোগ করুন'}</h3><button type="button" className="text-button" onClick={() => setShowEmployeeForm(false)}>বন্ধ করুন ✕</button></div>
           <div className="form-grid">
             <label>Employee Code *<input required value={employeeForm.employee_code} onChange={e => setEmployeeForm({ ...employeeForm, employee_code: e.target.value })} /></label>
@@ -299,14 +314,14 @@ export default function App() {
           </div>
           <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}</button><button type="button" className="secondary" onClick={() => setShowEmployeeForm(false)}>বাতিল</button></div>
         </form>}
-        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>কোড</th><th>কর্মীর নাম</th><th>মোবাইল</th><th>পদবি</th><th>গ্রাম</th><th>ডাকঘর</th><th>জেলা</th><th>বিভাগ</th><th>অতিরিক্ত ঠিকানা</th><th>Joining Date</th><th>Closing Date</th><th>পিতার নাম</th><th>মাতার নাম</th><th>স্বামী/স্ত্রীর নাম</th><th>শাখা</th><th>অবস্থা</th>{isAdmin && <th>কার্যক্রম</th>}</tr></thead>
-          <tbody>{filteredEmployees.map((x, i) => <tr key={x.id}><td>{i + 1}</td><td>{x.employee_code}</td><td>{x.full_name}</td><td>{x.phone || '—'}</td><td>{x.designation || '—'}</td><td>{x.village || '—'}</td><td>{x.post_office || '—'}</td><td>{x.district || '—'}</td><td>{x.division || '—'}</td><td>{x.address || '—'}</td><td>{x.joining_date || '—'}</td><td>{x.closing_date || '—'}</td><td>{x.father_name || '—'}</td><td>{x.mother_name || '—'}</td><td>{x.spouse_name || '—'}</td><td>{x.branch?.branch_name || '—'}</td><td><span className={x.is_active ? 'status on' : 'status off'}>{x.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span></td>{isAdmin && <td><div className="row-actions"><button className="small-action" onClick={() => startEditEmployee(x)}>Edit</button><button className="small-action secondary" onClick={() => toggleEmployee(x)}>{x.is_active ? 'বন্ধ' : 'চালু'}</button></div></td>}</tr>)}
-          {filteredEmployees.length === 0 && <tr><td colSpan={isAdmin ? 18 : 17} className="empty">{pageBusy ? 'তথ্য লোড হচ্ছে...' : 'কোনো Employee পাওয়া যায়নি।'}</td></tr>}</tbody>
+        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>কোড</th><th>কর্মীর নাম</th><th>মোবাইল</th><th>পদবি</th><th>গ্রাম</th><th>ডাকঘর</th><th>জেলা</th><th>বিভাগ</th><th>অতিরিক্ত ঠিকানা</th><th>Joining Date</th><th>Closing Date</th><th>পিতার নাম</th><th>মাতার নাম</th><th>স্বামী/স্ত্রীর নাম</th><th>শাখা</th><th>অবস্থা</th>{(canDo('employees', 'update') || canDo('employees', 'delete')) && <th>কার্যক্রম</th>}</tr></thead>
+          <tbody>{filteredEmployees.map((x, i) => <tr key={x.id}><td>{i + 1}</td><td>{x.employee_code}</td><td>{x.full_name}</td><td>{x.phone || '—'}</td><td>{x.designation || '—'}</td><td>{x.village || '—'}</td><td>{x.post_office || '—'}</td><td>{x.district || '—'}</td><td>{x.division || '—'}</td><td>{x.address || '—'}</td><td>{x.joining_date || '—'}</td><td>{x.closing_date || '—'}</td><td>{x.father_name || '—'}</td><td>{x.mother_name || '—'}</td><td>{x.spouse_name || '—'}</td><td>{x.branch?.branch_name || '—'}</td><td><span className={x.is_active ? 'status on' : 'status off'}>{x.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</span></td>{(canDo('employees', 'update') || canDo('employees', 'delete')) && <td><div className="row-actions">{canDo('employees', 'update') && <><button className="small-action" onClick={() => startEditEmployee(x)}>Edit</button><button className="small-action secondary" onClick={() => toggleEmployee(x)}>{x.is_active ? 'বন্ধ' : 'চালু'}</button></>}</div></td>}</tr>)}
+          {filteredEmployees.length === 0 && <tr><td colSpan={(canDo('employees', 'update') || canDo('employees', 'delete')) ? 18 : 17} className="empty">{pageBusy ? 'তথ্য লোড হচ্ছে...' : 'কোনো Employee পাওয়া যায়নি।'}</td></tr>}</tbody>
         </table></div>
         <div className="branch-list"><h3>শাখার তালিকা ({branches.length})</h3><div className="branch-chips">{branches.map(b => <span key={b.id}>{b.branch_code} · {b.branch_name}{b.area_name ? ' · ' + b.area_name : ''}</span>)}</div></div>
       </section>}
       
-      {active === 'users' && <section className="workspace">
+      {active === 'users' && isAdmin && <section className="workspace">
         <div className="section-head"><div><h2>User Management & Permission</h2><p>Main Admin ও Co-admin User তৈরি এবং অনুমতি নির্ধারণ করতে পারবেন।</p></div><button onClick={() => setShowUserForm(v => !v)}>+ নতুন User</button></div>
         {showUserForm && <form className="employee-form" onSubmit={createUser}>
           <div className="form-grid">
@@ -335,7 +350,7 @@ export default function App() {
           <div className="form-actions"><button disabled={pageBusy} onClick={savePermissions}>Permission সংরক্ষণ</button></div>
         </div>}
       </section>}
-      {active !== 'dashboard' && active !== 'employees' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
