@@ -40,5 +40,25 @@ using (
 drop policy if exists permissions_admin_manage on public.profile_permissions;
 create policy permissions_admin_manage on public.profile_permissions
 for all to authenticated
-using (public.is_admin_or_coadmin())
-with check (public.is_admin_or_coadmin());
+using (
+  public.current_app_role() = 'main_admin'
+  or (
+    public.current_app_role() = 'co_admin'
+    and exists (
+      select 1 from public.profiles target
+      where target.id = profile_permissions.profile_id
+        and target.role <> 'main_admin'
+    )
+  )
+)
+with check (
+  public.current_app_role() = 'main_admin'
+  or (
+    public.current_app_role() = 'co_admin'
+    and exists (
+      select 1 from public.profiles target
+      where target.id = profile_permissions.profile_id
+        and target.role <> 'main_admin'
+    )
+  )
+);
