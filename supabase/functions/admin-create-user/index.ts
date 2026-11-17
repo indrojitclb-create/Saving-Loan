@@ -45,7 +45,9 @@ Deno.serve(async (req) => {
   let body: any;
   try { body = await req.json(); } catch { return respond({ error: "Invalid request body" }, 400); }
   const full_name = String(body.full_name || "").trim();
-  const email = String(body.email || "").trim().toLowerCase();
+  const login_id = String(body.login_id || "").trim().toUpperCase();
+  const suppliedEmail = String(body.email || "").trim().toLowerCase();
+  const email = suppliedEmail || `uid-${crypto.randomUUID()}@login.savingloan.invalid`;
   const password = String(body.password || "");
   const allowedRoles = caller.role === "main_admin"
     ? ["main_admin", "co_admin", "assistant_admin", "area_manager", "branch_manager", "co"]
@@ -54,9 +56,13 @@ Deno.serve(async (req) => {
       : ["area_manager", "branch_manager", "co"];
   const role = String(body.role || "");
 
-  if (!full_name || !email || password.length < 8 || !allowedRoles.includes(role)) {
-    return respond({ error: "নাম, সঠিক Email, কমপক্ষে ৮ অক্ষরের Password এবং অনুমোদিত Role দিন।" }, 400);
+  if (!full_name || !/^[A-Z0-9._-]{3,40}$/.test(login_id) || (suppliedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail)) || password.length < 8 || !allowedRoles.includes(role)) {
+    return respond({ error: "নাম, ৩-৪০ অক্ষরের সঠিক Login ID, কমপক্ষে ৮ অক্ষরের Password এবং অনুমোদিত Role দিন। Email ঐচ্ছিক।" }, 400);
   }
+  const { data: existingLogin, error: loginLookupError } = await admin.from("profiles")
+    .select("id").ilike("login_id", login_id).maybeSingle();
+  if (loginLookupError) return respond({ error: "Login ID যাচাই করা যায়নি: " + loginLookupError.message }, 400);
+  if (existingLogin) return respond({ error: "এই Login ID আগে থেকেই ব্যবহৃত হচ্ছে।" }, 409);
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email, password, email_confirm: true, user_metadata: { full_name },
@@ -64,7 +70,7 @@ Deno.serve(async (req) => {
   if (createError || !created.user) return respond({ error: createError?.message || "Auth user তৈরি হয়নি।" }, 400);
 
   const { error: profileError } = await admin.from("profiles").insert({
-    id: created.user.id, full_name, role, is_active: true,
+    id: created.user.id, full_name, login_id, role, is_active: true,
     branch_id: body.branch_id || null,
     employee_id: body.employee_id || null,
     area_name: body.area_name || null,
