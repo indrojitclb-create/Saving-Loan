@@ -337,3 +337,58 @@ begin
       check (samity_gender is null or samity_gender in ('male','female'));
   end if;
 end $$;
+
+
+-- Atomic samity work-area change: record old/new village and update current village together.
+create or replace function public.change_samity_area(
+  p_samity_id uuid,
+  p_new_village_id uuid,
+  p_effective_date date,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old_village uuid;
+begin
+  if auth.uid() is null or not public.can_manage_module('samity_area_change','create') then
+    raise exception 'Permission denied';
+  end if;
+  if p_new_village_id is null or nullif(trim(p_reason),'') is null then
+    raise exception 'নতুন গ্রাম ও পরিবর্তনের কারণ দিতে হবে';
+  end if;
+  perform 1 from public.area_villages where id = p_new_village_id and is_active = true;
+  if not found then raise exception 'নির্বাচিত নতুন গ্রামটি সক্রিয় নয় বা পাওয়া যায়নি'; end if;
+
+  select village_id into v_old_village
+  from public.samities where id = p_samity_id for update;
+  if not found then raise exception 'Samity not found'; end if;
+  if v_old_village = p_new_village_id then
+    raise exception 'নতুন এলাকা বর্তমান এলাকার একই';
+  end if;
+
+  insert into public.samity_area_changes (
+    samity_id, old_village_id, new_village_id, effective_date, reason, changed_by
+  ) values (
+    p_samity_id, v_old_village, p_new_village_id,
+    coalesce(p_effective_date,current_date), trim(p_reason), auth.uid()
+  );
+
+  update public.samities set village_id = p_new_village_id where id = p_samity_id;
+end;
+$$;
+grant execute on function public.change_samity_area(uuid,uuid,date,text) to authenticated;
+
+drop policy if exists samities_read on public.samities;
+create policy samities_read on public.samities for select to authenticated
+using (
+  public.can_manage_module('samity','view')
+  or public.can_manage_module('samity','create')
+  or public.can_manage_module('samity','update')
+  or public.can_manage_module('samity_day_change','view')
+  or public.can_manage_module('samity_day_change','create')
+  or public.can_manage_module('samity_area_change','view')
+  or public.can_manage_module('samity_area_change','create')
+);
