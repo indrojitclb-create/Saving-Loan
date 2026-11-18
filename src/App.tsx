@@ -74,6 +74,8 @@ export default function App() {
   const [areaVillages, setAreaVillages] = useState<AreaRow[]>([]);
   const [areaForm, setAreaForm] = useState<{type: AreaType; id: string; name: string; parentId: string; postCode: string}>({type:'division',id:'',name:'',parentId:'',postCode:''});
   const [samities, setSamities] = useState<any[]>([]);
+  const [meetingChanges, setMeetingChanges] = useState<any[]>([]);
+  const [meetingForm, setMeetingForm] = useState({samity_id:'',new_day:'2',new_time:'10:00',new_place:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [showSamityForm, setShowSamityForm] = useState(false);
   const [editingSamityId, setEditingSamityId] = useState<string | null>(null);
   const [samityForm, setSamityForm] = useState({samity_code:'',samity_name:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
@@ -114,7 +116,7 @@ export default function App() {
       if (ownPermissions.error) setError('আপনার Permission পড়া যায়নি: ' + ownPermissions.error.message);
       setMyPermissions(ownPermissions.data || []);
     }
-    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult] = await Promise.all([
+    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult, meetingChangesResult] = await Promise.all([
       db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
       db.from('members').select('id', { count: 'exact', head: true }),
@@ -125,6 +127,7 @@ export default function App() {
       db.from('area_post_offices').select('*').order('name'),
       db.from('area_villages').select('*').order('name'),
       db.from('samities').select('*').order('samity_code'),
+      db.from('samity_meeting_changes').select('*').order('created_at', {ascending:false}),
     ]);
     if (employeeResult.error) setError('কর্মী তালিকা পড়া যায়নি: ' + employeeResult.error.message);
     else setEmployees(employeeResult.data || []);
@@ -138,6 +141,7 @@ export default function App() {
     setAreaPostOffices(postOfficesResult.data || []);
     setAreaVillages(villagesResult.data || []);
     setSamities(samityResult.data || []);
+    setMeetingChanges(meetingChangesResult.data || []);
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
       const userList = await db.from('profiles').select('id,full_name,login_id,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
@@ -317,6 +321,34 @@ export default function App() {
     if (result.error) { setNotice('সমিতি সংরক্ষণ হয়নি: '+result.error.message); return; }
     setNotice(editingSamityId ? 'সমিতির তথ্য আপডেট হয়েছে।' : 'নতুন সমিতি গঠন সম্পন্ন হয়েছে।');
     setShowSamityForm(false); resetSamityForm(); await loadData();
+  }
+
+
+  async function saveMeetingChange(e: FormEvent) {
+    e.preventDefault();
+    if (!canDo('samity_day_change','create')) return;
+    const current = samities.find(x => x.id === meetingForm.samity_id);
+    if (!current) { setNotice('সমিতি নির্বাচন করুন।'); return; }
+    if (!meetingForm.reason.trim()) { setNotice('পরিবর্তনের কারণ লিখুন।'); return; }
+    setPageBusy(true); setNotice('');
+    const { error: rpcError } = await db.rpc('change_samity_meeting', {
+      p_samity_id: meetingForm.samity_id,
+      p_new_day: Number(meetingForm.new_day),
+      p_new_time: meetingForm.new_time,
+      p_new_place: meetingForm.new_place.trim(),
+      p_effective_date: meetingForm.effective_date,
+      p_reason: meetingForm.reason.trim()
+    });
+    setPageBusy(false);
+    if (rpcError) { setNotice('সময় পরিবর্তন হয়নি: ' + rpcError.message); return; }
+    setNotice('সমিতির সভার দিন, সময় ও স্থান পরিবর্তন হয়েছে এবং ইতিহাস সংরক্ষিত হয়েছে।');
+    setMeetingForm({samity_id:'',new_day:'2',new_time:'10:00',new_place:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
+    await loadData();
+  }
+
+  function chooseMeetingSamity(id: string) {
+    const row = samities.find(x => x.id === id);
+    setMeetingForm({...meetingForm,samity_id:id,new_day:String(row?.meeting_day ?? 2),new_time:String(row?.meeting_time || '10:00').slice(0,5),new_place:row?.meeting_place || ''});
   }
 
   async function createUser(e: FormEvent) {
@@ -545,7 +577,27 @@ export default function App() {
         </tbody></table></div>
         {areaVillages.filter(x=>x.is_active).length===0&&<p className="muted">সমিতি গঠনের আগে কেন্দ্রীয় কর্ম এলাকায় বিভাগ, জেলা, উপজেলা, পোস্ট অফিস ও গ্রাম যোগ করুন।</p>}
       </section>}
-      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'samity_day_change' && <section className="workspace">
+        <div className="section-head"><div><h2>সমিতির দিন ও সময় পরিবর্তন</h2><p>নতুন সভার দিন, সময় ও স্থান কার্যকর হওয়ার তারিখসহ সংরক্ষণ করুন। পুরোনো তথ্য ইতিহাসে থাকবে।</p></div></div>
+        {canDo('samity_day_change','create') && <form className="employee-form" onSubmit={saveMeetingChange}>
+          <div className="form-grid">
+            <label>সমিতি নির্বাচন করুন *<select required value={meetingForm.samity_id} onChange={e=>chooseMeetingSamity(e.target.value)}><option value="">সমিতি নির্বাচন</option>{samities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
+            <label>বর্তমান সভার দিন<input disabled value={meetingForm.samity_id ? ['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][samities.find(x=>x.id===meetingForm.samity_id)?.meeting_day] : ''}/></label>
+            <label>নতুন সভার দিন *<select required value={meetingForm.new_day} onChange={e=>setMeetingForm({...meetingForm,new_day:e.target.value})}><option value="0">রবিবার</option><option value="1">সোমবার</option><option value="2">মঙ্গলবার</option><option value="3">বুধবার</option><option value="4">বৃহস্পতিবার</option><option value="5">শুক্রবার</option><option value="6">শনিবার</option></select></label>
+            <label>নতুন সভার সময় *<input required type="time" value={meetingForm.new_time} onChange={e=>setMeetingForm({...meetingForm,new_time:e.target.value})}/></label>
+            <label>নতুন সভাস্থল *<input required value={meetingForm.new_place} onChange={e=>setMeetingForm({...meetingForm,new_place:e.target.value})}/></label>
+            <label>কার্যকর হওয়ার তারিখ *<input required type="date" value={meetingForm.effective_date} onChange={e=>setMeetingForm({...meetingForm,effective_date:e.target.value})}/></label>
+            <label className="wide">পরিবর্তনের কারণ *<textarea required rows={2} value={meetingForm.reason} onChange={e=>setMeetingForm({...meetingForm,reason:e.target.value})}/></label>
+          </div>
+          <div className="form-actions"><button disabled={pageBusy || !meetingForm.samity_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'পরিবর্তন সংরক্ষণ করুন'}</button></div>
+        </form>}
+        <h3>পরিবর্তনের ইতিহাস</h3>
+        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>আগের দিন/সময়/স্থান</th><th>নতুন দিন/সময়/স্থান</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
+          {meetingChanges.map((x)=>{const s=samities.find(y=>y.id===x.samity_id);const days=['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'];return <tr key={x.id}><td>{s ? s.samity_code+' — '+s.samity_name : '—'}</td><td>{days[x.old_day]} / {String(x.old_time).slice(0,5)} / {x.old_place}</td><td>{days[x.new_day]} / {String(x.new_time).slice(0,5)} / {x.new_place}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
+          {meetingChanges.length===0&&<tr><td colSpan={6} className="empty">এখনও কোনো পরিবর্তনের ইতিহাস নেই।</td></tr>}
+        </tbody></table></div>
+      </section>}
+      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
