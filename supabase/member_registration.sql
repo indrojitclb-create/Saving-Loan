@@ -147,6 +147,43 @@ alter table public.member_savings_enrollments enable row level security;
 alter table public.member_documents add column if not exists uploaded_by_name text;
 alter table public.member_documents enable row level security;
 
+-- Assistant Admins also respect their assigned Branch or Area scope.
+create or replace function public.can_access_branch(p_branch_id uuid)
+returns boolean
+language sql stable security definer
+set search_path = public
+as $$
+  select case
+    when public.is_admin_or_coadmin() then true
+    when public.current_app_role() = 'assistant_admin' then exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid()) and p.is_active
+        and (
+          p.branch_id = p_branch_id
+          or (p.area_name is not null and exists (
+            select 1 from public.branches b
+            where b.id = p_branch_id and b.area_name = p.area_name
+          ))
+        )
+    )
+    when public.current_app_role() = 'branch_manager' then exists (
+      select 1 from public.profiles p
+      where p.id = (select auth.uid()) and p.is_active and p.branch_id = p_branch_id
+    )
+    when public.current_app_role() = 'area_manager' then exists (
+      select 1 from public.profiles p
+      join public.branches b on b.area_name = p.area_name
+      where p.id = (select auth.uid()) and p.is_active and b.id = p_branch_id
+    )
+    when public.current_app_role() = 'co' then exists (
+      select 1 from public.profiles p
+      join public.employees e on e.id = p.employee_id
+      where p.id = (select auth.uid()) and p.is_active and e.branch_id = p_branch_id
+    )
+    else false
+  end
+$$;
+
 -- Enforce both module permissions and Branch-level data access.
 drop policy if exists members_read_scope on public.members;
 drop policy if exists members_read_permission on public.members;
