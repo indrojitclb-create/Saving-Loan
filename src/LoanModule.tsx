@@ -68,7 +68,6 @@ export default function LoanModule({ samities, canDo }: Props) {
       member_id: memberId,
       principal: amount,
       interest_rate: 0,
-      term_months: 46,
       term_weeks: 46,
       service_charge_rate: 0.24,
       total_service_charge: serviceTotal,
