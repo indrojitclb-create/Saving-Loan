@@ -107,7 +107,7 @@ export default function LoanModule({ samities, canDo }: Props) {
     await load();
   }
 
-  async function addClosure(e: React.FormEvent) {
+  async function addClosure(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !canDo('loans','create')) return;
     const { data: authData } = await supabase.auth.getUser();
