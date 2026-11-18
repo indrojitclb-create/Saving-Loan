@@ -708,7 +708,7 @@ export default function App() {
           {samityBranchChanges.length===0&&<tr><td colSpan={6} className="empty">এখনও কোনো Branch স্থানান্তরের ইতিহাস নেই।</td></tr>}
         </tbody></table></div>
       </section>}
-      {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
+      {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} fullName={fullName} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
       {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
