@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import MemberModule from './MemberModule';
+import LoanModule from './LoanModule';
 import { configured, configurationError, supabase } from './lib/supabase';
 
 type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings';
@@ -22,7 +23,7 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'employees', label: 'Employee List', desc: 'কর্মী ও শাখা ব্যবস্থাপনা' },
   { key: 'users', label: 'User & Permission', desc: 'ইউজার, ভূমিকা ও অনুমতি' },
   { key: 'savings', label: 'Savings', desc: 'সঞ্চয় জমা ও উত্তোলন' },
-  { key: 'loans', label: 'Loan Management', desc: 'ঋণ বিতরণ, কিস্তি ও বকেয়া' },
+  { key: 'loans', label: 'ঋণ ব্যবস্থাপনা ও আদায় সিট', desc: 'ঋণ বিতরণ, ৪৬ সপ্তাহের কিস্তি ও সমিতিভিত্তিক আদায়' },
   { key: 'reports', label: 'Reports', desc: 'দৈনিক, মাসিক ও বার্ষিক রিপোর্ট' },
   { key: 'audit', label: 'Audit Log', desc: 'ব্যবহারকারীর কার্যক্রমের রেকর্ড' },
   { key: 'area_master', label: 'কেন্দ্রীয় কর্ম এলাকা', desc: 'বিভাগ, জেলা, উপজেলা, পোস্ট অফিস ও গ্রাম' },
@@ -709,7 +710,8 @@ export default function App() {
         </tbody></table></div>
       </section>}
       {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} fullName={fullName} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
-      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'loans' && <LoanModule samities={samities} canDo={canDo} />}
+      {active !== 'dashboard' && active !== 'loans' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
