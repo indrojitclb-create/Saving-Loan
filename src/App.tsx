@@ -78,7 +78,7 @@ export default function App() {
   const [meetingForm, setMeetingForm] = useState({samity_id:'',new_day:'2',new_time:'10:00',new_place:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [showSamityForm, setShowSamityForm] = useState(false);
   const [editingSamityId, setEditingSamityId] = useState<string | null>(null);
-  const [samityForm, setSamityForm] = useState({samity_code:'',samity_name:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
+  const [samityForm, setSamityForm] = useState({samity_code:'',samity_name:'',samity_gender:'female',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
   const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_area_change: 'সমিতির কর্ম এলাকা পরিবর্তন', samity_staff: 'সমিতির কর্মী নিয়োগ ও পরিবর্তন', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন' };
 
   const db: any = supabase;
@@ -294,7 +294,7 @@ export default function App() {
 
   function resetSamityForm() {
     setEditingSamityId(null);
-    setSamityForm({samity_code:'',samity_name:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
+    setSamityForm({samity_code:'',samity_name:'',samity_gender:'female',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
   }
 
   function editSamity(row: any) {
@@ -303,7 +303,7 @@ export default function App() {
     const upazila = areaUpazilas.find(x=>x.id===post?.upazila_id);
     const district = areaDistricts.find(x=>x.id===upazila?.district_id);
     setEditingSamityId(row.id);
-    setSamityForm({samity_code:row.samity_code,samity_name:row.samity_name,division_id:district?.division_id || '',district_id:district?.id || '',upazila_id:upazila?.id || '',post_office_id:post?.id || '',village_id:row.village_id,meeting_place:row.meeting_place,meeting_day:String(row.meeting_day),meeting_time:String(row.meeting_time || '').slice(0,5),start_date:row.start_date || '',status:row.status || 'active',notes:row.notes || ''});
+    setSamityForm({samity_code:row.samity_code,samity_name:row.samity_name,samity_gender:row.samity_gender || 'female',division_id:district?.division_id || '',district_id:district?.id || '',upazila_id:upazila?.id || '',post_office_id:post?.id || '',village_id:row.village_id,meeting_place:row.meeting_place,meeting_day:String(row.meeting_day),meeting_time:String(row.meeting_time || '').slice(0,5),start_date:row.start_date || '',status:row.status || 'active',notes:row.notes || ''});
     setShowSamityForm(true);
     setNotice('');
   }
@@ -313,7 +313,7 @@ export default function App() {
     if (!canDo('samity', editingSamityId ? 'update' : 'create')) return;
     if (!samityForm.village_id) { setNotice('সমিতির গ্রাম নির্বাচন করুন।'); return; }
     setPageBusy(true); setNotice('');
-    const payload = {samity_code:samityForm.samity_code.trim(),samity_name:samityForm.samity_name.trim(),village_id:samityForm.village_id,meeting_place:samityForm.meeting_place.trim(),meeting_day:Number(samityForm.meeting_day),meeting_time:samityForm.meeting_time,start_date:samityForm.start_date || null,status:samityForm.status,notes:samityForm.notes.trim() || null};
+    const payload = {samity_code:samityForm.samity_code.trim(),samity_name:samityForm.samity_name.trim(),samity_gender:samityForm.samity_gender,village_id:samityForm.village_id,meeting_place:samityForm.meeting_place.trim(),meeting_day:Number(samityForm.meeting_day),meeting_time:samityForm.meeting_time,start_date:samityForm.start_date || null,status:samityForm.status,notes:samityForm.notes.trim() || null};
     const result = editingSamityId
       ? await db.from('samities').update(payload).eq('id',editingSamityId)
       : await db.from('samities').insert({...payload,created_by:session.user.id});
@@ -557,6 +557,7 @@ export default function App() {
           <div className="form-grid">
             <label>সমিতির কোড *<input required value={samityForm.samity_code} onChange={e=>setSamityForm({...samityForm,samity_code:e.target.value})} placeholder="যেমন: S001"/></label>
             <label>সমিতির নাম *<input required value={samityForm.samity_name} onChange={e=>setSamityForm({...samityForm,samity_name:e.target.value})}/></label>
+            <label>সমিতির ধরন *<select required value={samityForm.samity_gender} onChange={e=>setSamityForm({...samityForm,samity_gender:e.target.value})}><option value="male">Male (পুরুষ)</option><option value="female">Female (মহিলা)</option></select></label>
             <label>বিভাগ *<select required value={samityForm.division_id} onChange={e=>setSamityForm({...samityForm,division_id:e.target.value,district_id:'',upazila_id:'',post_office_id:'',village_id:''})}><option value="">বিভাগ নির্বাচন</option>{areaDivisions.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
             <label>জেলা *<select required value={samityForm.district_id} onChange={e=>setSamityForm({...samityForm,district_id:e.target.value,upazila_id:'',post_office_id:'',village_id:''})}><option value="">জেলা নির্বাচন</option>{areaDistricts.filter(x=>x.is_active&&x.division_id===samityForm.division_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
             <label>উপজেলা *<select required value={samityForm.upazila_id} onChange={e=>setSamityForm({...samityForm,upazila_id:e.target.value,post_office_id:'',village_id:''})}><option value="">উপজেলা নির্বাচন</option>{areaUpazilas.filter(x=>x.is_active&&x.district_id===samityForm.district_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
@@ -571,8 +572,8 @@ export default function App() {
           </div>
           <div className="form-actions"><button disabled={pageBusy}>{pageBusy?'সংরক্ষণ হচ্ছে...':'সমিতির তথ্য সংরক্ষণ'}</button><button type="button" className="secondary" onClick={()=>{setShowSamityForm(false);resetSamityForm();}}>বাতিল</button></div>
         </form>}
-        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>সমিতি কোড</th><th>সমিতির নাম</th><th>গ্রাম</th><th>সভাস্থল</th><th>সভার দিন</th><th>সময়</th><th>গঠনের তারিখ</th><th>অবস্থা</th>{canDo('samity','update')&&<th>কার্যক্রম</th>}</tr></thead><tbody>
-          {samities.map((row,i)=>{const village=areaVillages.find(x=>x.id===row.village_id);return <tr key={row.id}><td>{i+1}</td><td>{row.samity_code}</td><td>{row.samity_name}</td><td>{village?.name||'—'}</td><td>{row.meeting_place}</td><td>{['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][row.meeting_day]||'—'}</td><td>{String(row.meeting_time||'').slice(0,5)}</td><td>{row.start_date||'—'}</td><td>{row.status==='active'?'সক্রিয়':row.status==='inactive'?'নিষ্ক্রিয়':'বন্ধ'}</td>{canDo('samity','update')&&<td><button className="small-action" onClick={()=>editSamity(row)}>Edit</button></td>}</tr>})}
+        <div className="table-wrap"><table><thead><tr><th>ক্রম</th><th>সমিতি কোড</th><th>সমিতির নাম</th><th>ধরন</th><th>গ্রাম</th><th>সভাস্থল</th><th>সভার দিন</th><th>সময়</th><th>গঠনের তারিখ</th><th>অবস্থা</th>{canDo('samity','update')&&<th>কার্যক্রম</th>}</tr></thead><tbody>
+          {samities.map((row,i)=>{const village=areaVillages.find(x=>x.id===row.village_id);return <tr key={row.id}><td>{i+1}</td><td>{row.samity_code}</td><td>{row.samity_name}</td><td>{row.samity_gender==='male'?'Male (পুরুষ)':row.samity_gender==='female'?'Female (মহিলা)':'—'}</td><td>{village?.name||'—'}</td><td>{row.meeting_place}</td><td>{['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][row.meeting_day]||'—'}</td><td>{String(row.meeting_time||'').slice(0,5)}</td><td>{row.start_date||'—'}</td><td>{row.status==='active'?'সক্রিয়':row.status==='inactive'?'নিষ্ক্রিয়':'বন্ধ'}</td>{canDo('samity','update')&&<td><button className="small-action" onClick={()=>editSamity(row)}>Edit</button></td>}</tr>})}
           {samities.length===0&&<tr><td colSpan={canDo('samity','update')?10:9} className="empty">এখনও কোনো সমিতি গঠন করা হয়নি।</td></tr>}
         </tbody></table></div>
         {areaVillages.filter(x=>x.is_active).length===0&&<p className="muted">সমিতি গঠনের আগে কেন্দ্রীয় কর্ম এলাকায় বিভাগ, জেলা, উপজেলা, পোস্ট অফিস ও গ্রাম যোগ করুন।</p>}
@@ -592,9 +593,9 @@ export default function App() {
           <div className="form-actions"><button disabled={pageBusy || !meetingForm.samity_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'পরিবর্তন সংরক্ষণ করুন'}</button></div>
         </form>}
         <h3>পরিবর্তনের ইতিহাস</h3>
-        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>আগের দিন/সময়/স্থান</th><th>নতুন দিন/সময়/স্থান</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
-          {meetingChanges.map((x)=>{const s=samities.find(y=>y.id===x.samity_id);const days=['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'];return <tr key={x.id}><td>{s ? s.samity_code+' — '+s.samity_name : '—'}</td><td>{days[x.old_day]} / {String(x.old_time).slice(0,5)} / {x.old_place}</td><td>{days[x.new_day]} / {String(x.new_time).slice(0,5)} / {x.new_place}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
-          {meetingChanges.length===0&&<tr><td colSpan={6} className="empty">এখনও কোনো পরিবর্তনের ইতিহাস নেই।</td></tr>}
+        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>ধরন</th><th>আগের দিন/সময়/স্থান</th><th>নতুন দিন/সময়/স্থান</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
+          {meetingChanges.map((x)=>{const s=samities.find(y=>y.id===x.samity_id);const days=['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'];return <tr key={x.id}><td>{s ? s.samity_code+' — '+s.samity_name : '—'}</td><td>{s?.samity_gender==='male'?'Male (পুরুষ)':s?.samity_gender==='female'?'Female (মহিলা)':'—'}</td><td>{days[x.old_day]} / {String(x.old_time).slice(0,5)} / {x.old_place}</td><td>{days[x.new_day]} / {String(x.new_time).slice(0,5)} / {x.new_place}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
+          {meetingChanges.length===0&&<tr><td colSpan={7} className="empty">এখনও কোনো পরিবর্তনের ইতিহাস নেই।</td></tr>}
         </tbody></table></div>
       </section>}
       {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
