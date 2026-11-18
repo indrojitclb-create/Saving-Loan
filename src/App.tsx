@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { configured, configurationError, supabase } from './lib/supabase';
 
-type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_area_change' | 'samity_staff' | 'employee_transfer' | 'member_transfer';
+type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer';
 type Employee = {
   id: string; employee_code: string; full_name: string; phone: string | null;
   email: string | null; branch_id: string | null; designation: string | null;
@@ -27,8 +27,8 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'area_master', label: 'কেন্দ্রীয় কর্ম এলাকা', desc: 'বিভাগ, জেলা, উপজেলা, পোস্ট অফিস ও গ্রাম' },
   { key: 'samity', label: 'সমিতি গঠন', desc: 'নতুন সমিতি তৈরি ও পরিচালনা' },
   { key: 'samity_day_change', label: 'সমিতির দিন ও সময় পরিবর্তন', desc: 'সমিতির সাপ্তাহিক সভার সময়সূচি পরিবর্তন' },
-  { key: 'samity_area_change', label: 'সমিতির কর্ম এলাকা পরিবর্তন', desc: 'সমিতির নির্ধারিত এলাকা পরিবর্তন' },
-  { key: 'samity_staff', label: 'সমিতির কর্মী পরিবর্তন', desc: 'সমিতিতে কর্মী নিয়োগ ও পরিবর্তন' },
+  { key: 'samity_staff', label: 'সমিতির কর্মী স্থানান্তর', desc: 'সমিতির দায়িত্বে থাকা কর্মী পরিবর্তন' },
+  { key: 'samity_branch_transfer', label: 'সমিতির Branch স্থানান্তর', desc: 'সমিতিকে এক Branch থেকে অন্য Branch-এ স্থানান্তর' },
   { key: 'employee_transfer', label: 'কর্মীর কর্ম এলাকা পরিবর্তন', desc: 'কর্মীকে অন্য কর্ম এলাকায় স্থানান্তর' },
   { key: 'member_transfer', label: 'সদস্যের সমিতি পরিবর্তন', desc: 'সদস্যকে অন্য সমিতিতে স্থানান্তর' },
 ];
@@ -76,12 +76,17 @@ export default function App() {
   const [samities, setSamities] = useState<any[]>([]);
   const [meetingChanges, setMeetingChanges] = useState<any[]>([]);
   const [areaChanges, setAreaChanges] = useState<any[]>([]);
+  const [samityStaffAssignments, setSamityStaffAssignments] = useState<any[]>([]);
+  const [samityStaffChanges, setSamityStaffChanges] = useState<any[]>([]);
+  const [samityBranchChanges, setSamityBranchChanges] = useState<any[]>([]);
+  const [staffTransferForm, setStaffTransferForm] = useState({samity_id:'',employee_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
+  const [branchTransferForm, setBranchTransferForm] = useState({samity_id:'',branch_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [areaChangeForm, setAreaChangeForm] = useState({samity_id:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [meetingForm, setMeetingForm] = useState({samity_id:'',new_day:'2',new_time:'10:00',new_place:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [showSamityForm, setShowSamityForm] = useState(false);
   const [editingSamityId, setEditingSamityId] = useState<string | null>(null);
   const [samityForm, setSamityForm] = useState({samity_code:'',samity_name:'',samity_gender:'female',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
-  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_area_change: 'সমিতির কর্ম এলাকা পরিবর্তন', samity_staff: 'সমিতির কর্মী নিয়োগ ও পরিবর্তন', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন' };
+  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_staff: 'সমিতির কর্মী স্থানান্তর', samity_branch_transfer: 'সমিতির Branch স্থানান্তর', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন' };
 
   const db: any = supabase;
   const isAdmin = role === 'main_admin' || role === 'co_admin';
@@ -118,7 +123,7 @@ export default function App() {
       if (ownPermissions.error) setError('আপনার Permission পড়া যায়নি: ' + ownPermissions.error.message);
       setMyPermissions(ownPermissions.data || []);
     }
-    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult, meetingChangesResult, areaChangesResult] = await Promise.all([
+    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult, meetingChangesResult, areaChangesResult, staffAssignmentsResult, staffChangesResult, branchChangesResult] = await Promise.all([
       db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
       db.from('members').select('id', { count: 'exact', head: true }),
@@ -131,6 +136,9 @@ export default function App() {
       db.from('samities').select('*').order('samity_code'),
       db.from('samity_meeting_changes').select('*').order('created_at', {ascending:false}),
       db.from('samity_area_changes').select('*').order('created_at', {ascending:false}),
+      db.from('samity_employee_assignments').select('*').eq('is_active',true).order('assigned_from',{ascending:false}),
+      db.from('samity_employee_changes').select('*').order('created_at',{ascending:false}),
+      db.from('samity_branch_changes').select('*').order('created_at',{ascending:false}),
     ]);
     if (employeeResult.error) setError('কর্মী তালিকা পড়া যায়নি: ' + employeeResult.error.message);
     else setEmployees(employeeResult.data || []);
@@ -146,6 +154,9 @@ export default function App() {
     setSamities(samityResult.data || []);
     setMeetingChanges(meetingChangesResult.data || []);
     setAreaChanges(areaChangesResult.data || []);
+    setSamityStaffAssignments(staffAssignmentsResult.data || []);
+    setSamityStaffChanges(staffChangesResult.data || []);
+    setSamityBranchChanges(branchChangesResult.data || []);
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
       const userList = await db.from('profiles').select('id,full_name,login_id,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
