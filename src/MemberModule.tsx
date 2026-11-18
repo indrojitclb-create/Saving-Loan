@@ -49,6 +49,8 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
   const [editingSchemeId,setEditingSchemeId]=useState<string|null>(null);
   const db:any=supabase;
   const activeSamities=useMemo(()=>samities.filter(s=>s.branch_id===form.branch_id && s.status==='active'),[samities,form.branch_id]);
+  const selectedBranch=branches.find(x=>x.id===form.branch_id);
+  const selectedSamity=samities.find(x=>x.id===form.samity_id);
   const districtsFor=(id:string)=>districts.filter(x=>x.division_id===id);
   const upazilasFor=(id:string)=>upazilas.filter(x=>x.district_id===id);
   const postFor=(id:string)=>postOffices.filter(x=>x.upazila_id===id);
@@ -158,12 +160,12 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
         <label className="field">Samity Name *<select required value={form.samity_id} onChange={e=>set('samity_id',e.target.value)}><option value="">সমিতি নির্বাচন</option>{activeSamities.map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
         {field('Member Name','full_name',true)}{field('Member Surname','member_surname')}{field('Primary Product','primary_product',true)}
         <label className="field">Gender *<select required value={form.gender} onChange={e=>set('gender',e.target.value)}><option value="female">Female</option><option value="male">Male</option></select></label>
-        <label className="field">Third Gender? *<select value={form.is_third_gender?'yes':'no'} onChange={e=>set('is_third_gender',e.target.value==='yes')}><option value="no">No</option><option value="yes">Yes</option></select></label>
+        <label className="field">Third Gender? *<select required value={form.is_third_gender?'yes':'no'} onChange={e=>set('is_third_gender',e.target.value==='yes')}><option value="no">No</option><option value="yes">Yes</option></select></label>
         {field('Admission Date','admission_date',true,'date')}{field('Date of Birth','date_of_birth',true,'date')}<label className="field">Age<input readOnly value={form.date_of_birth?Math.max(0,Math.floor((new Date().getTime()-new Date(form.date_of_birth).getTime())/31557600000)):''}/></label>{field('Father Name','father_name',true)}{field('Mother Name','mother_name',true)}
         {field('Marital Status','marital_status',true,'text',['Unmarried','Married','Divorced','Widower','Widow'])}{field('Admission Fee','admission_fee',false,'number')}{field('Admission No','admission_no')}{field('Application No','application_no')}
         {field('Education Level','education_level',true,'text',['B.Com','B.Sc','BA','BBA','BBS','BSS','HSC','JSC','M.Com','M.Sc','MA','MBA','MBS','MSS','Pre-Primary','PSC','SSC'])}
         {field('Mobile Number','phone',true,'tel')}{field('Nationality','nationality',true)}{field('Smart ID (10 digit)','smart_id')}{field('National ID (17 digit)','national_id')}{field('Birth Registration No','birth_registration_no')}{field('TIN No','tin_no')}
-        {field('Other Card Type','other_card_type',false,'text',['Passport','Driving License'])}{field('Other Card No','other_card_no')}
+        {field('Other Card Type','other_card_type',true,'text',['Passport','Driving License'])}{field('Other Card No','other_card_no')}
       </div><div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(1)}>পরবর্তী: Contact Details</button></div></div>}
       {step===1&&<><h3>Present Address</h3><div className="form-grid">
         {areaSelect('Division','present_division_id',divisions)}{areaSelect('District','present_district_id',districtsFor(form.present_division_id),'present_division_id',['present_upazila_id','present_post_office_id','present_village_id'])}
