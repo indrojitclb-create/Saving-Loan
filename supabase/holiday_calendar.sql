@@ -43,8 +43,13 @@ drop policy if exists holiday_calendar_read on public.holiday_calendar;
 create policy holiday_calendar_read on public.holiday_calendar
 for select to authenticated using (
   public.can_manage_module('holiday_calendar','view')
-  or public.can_manage_module('holiday_calendar','create')
-  or public.can_manage_module('holiday_calendar','update')
+  and (
+    scope = 'organization'
+    or (scope = 'branch' and public.can_access_branch(branch_id))
+    or (scope = 'samity' and exists (
+      select 1 from public.samities s where s.id = samity_id and public.can_access_branch(s.branch_id)
+    ))
+  )
 );
 drop policy if exists holiday_calendar_insert on public.holiday_calendar;
 create policy holiday_calendar_insert on public.holiday_calendar
@@ -71,6 +76,11 @@ for delete to authenticated using (public.can_manage_module('holiday_calendar','
 drop policy if exists holiday_calendar_settings_read on public.holiday_calendar_settings;
 create policy holiday_calendar_settings_read on public.holiday_calendar_settings
 for select to authenticated using (true);
+drop policy if exists holiday_calendar_settings_insert on public.holiday_calendar_settings;
+create policy holiday_calendar_settings_insert on public.holiday_calendar_settings
+for insert to authenticated with check (
+  public.can_manage_module('holiday_calendar','update')
+);
 drop policy if exists holiday_calendar_settings_update on public.holiday_calendar_settings;
 create policy holiday_calendar_settings_update on public.holiday_calendar_settings
 for update to authenticated using (
