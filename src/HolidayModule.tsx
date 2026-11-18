@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 
 type Props = { branches: any[]; samities: any[]; canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean };
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => { const d=new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); };
 const types = ['Public','Special','Emergency','Other'];
 const scopeNames: Record<string,string> = {organization:'Organization',branch:'Branch',samity:'Samity'};
 
