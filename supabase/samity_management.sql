@@ -479,3 +479,67 @@ using (
   or public.can_manage_module('samity_branch_transfer','view')
   or public.can_manage_module('samity_branch_transfer','create')
 );
+
+
+-- Atomic samity staff transfer: close previous assignment, add the replacement, and retain history.
+create or replace function public.transfer_samity_staff(
+  p_samity_id uuid,
+  p_new_employee_id uuid,
+  p_effective_date date,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old_employee_id uuid;
+  v_effective_date date := coalesce(p_effective_date,current_date);
+begin
+  if auth.uid() is null or not public.can_manage_module('samity_staff','create') then
+    raise exception 'Permission denied';
+  end if;
+  if p_new_employee_id is null or nullif(trim(p_reason),'') is null then
+    raise exception 'নতুন কর্মী ও পরিবর্তনের কারণ দিতে হবে';
+  end if;
+  perform 1 from public.employees where id = p_new_employee_id and is_active = true;
+  if not found then raise exception 'নির্বাচিত কর্মী সক্রিয় নয় বা পাওয়া যায়নি'; end if;
+
+  select employee_id into v_old_employee_id
+  from public.samity_employee_assignments
+  where samity_id = p_samity_id and is_active = true
+  order by assigned_from desc, created_at desc
+  limit 1
+  for update;
+
+  if v_old_employee_id = p_new_employee_id then
+    raise exception 'নির্বাচিত কর্মী বর্তমানে এই সমিতির দায়িত্বে আছেন';
+  end if;
+
+  if v_old_employee_id is not null then
+    update public.samity_employee_assignments
+    set is_active = false, assigned_to = v_effective_date
+    where samity_id = p_samity_id and employee_id = v_old_employee_id and is_active = true;
+    insert into public.samity_employee_changes (
+      samity_id, employee_id, change_type, effective_date, reason, changed_by
+    ) values (
+      p_samity_id, v_old_employee_id, 'removed', v_effective_date, trim(p_reason), auth.uid()
+    );
+  end if;
+
+  insert into public.samity_employee_assignments (
+    samity_id, employee_id, assigned_from, is_active, notes, created_by
+  ) values (
+    p_samity_id, p_new_employee_id, v_effective_date, true, trim(p_reason), auth.uid()
+  );
+
+  insert into public.samity_employee_changes (
+    samity_id, employee_id, change_type, effective_date, reason, changed_by
+  ) values (
+    p_samity_id, p_new_employee_id,
+    case when v_old_employee_id is null then 'assigned' else 'replaced' end,
+    v_effective_date, trim(p_reason), auth.uid()
+  );
+end;
+$$;
+grant execute on function public.transfer_samity_staff(uuid,uuid,date,text) to authenticated;
