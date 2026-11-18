@@ -142,33 +142,47 @@ alter table public.optional_savings_products enable row level security;
 alter table public.member_savings_enrollments enable row level security;
 alter table public.member_documents enable row level security;
 
--- Keep member access within the user's permitted Branch.
+-- Enforce both module permissions and Branch-level data access.
+drop policy if exists members_read_scope on public.members;
 drop policy if exists members_read_permission on public.members;
-create policy members_read_permission on public.members for select to authenticated
+create policy members_read_scope on public.members for select to authenticated
 using (
   public.can_access_branch(branch_id)
   and (public.can_manage_module('members','view') or public.can_manage_module('members','create') or public.can_manage_module('members','update'))
 );
+drop policy if exists members_insert_scope on public.members;
 drop policy if exists members_insert_permission on public.members;
-create policy members_insert_permission on public.members for insert to authenticated
-with check (public.can_access_branch(branch_id) and public.can_manage_module('members','create') and created_by = (select auth.uid()));
+create policy members_insert_scope on public.members for insert to authenticated
+with check (
+  public.can_access_branch(branch_id)
+  and public.can_manage_module('members','create')
+  and created_by = (select auth.uid())
+);
+drop policy if exists members_update_admin on public.members;
 drop policy if exists members_update_permission on public.members;
-create policy members_update_permission on public.members for update to authenticated
+create policy members_update_admin on public.members for update to authenticated
 using (public.can_access_branch(branch_id) and public.can_manage_module('members','update'))
 with check (public.can_access_branch(branch_id) and public.can_manage_module('members','update'));
+drop policy if exists members_delete_admin on public.members;
+create policy members_delete_admin on public.members for delete to authenticated
+using (public.can_access_branch(branch_id) and public.can_manage_module('members','delete'));
 
 drop policy if exists optional_savings_products_read on public.optional_savings_products;
 create policy optional_savings_products_read on public.optional_savings_products for select to authenticated
 using (
   public.can_manage_module('optional_savings','view')
   or public.can_manage_module('optional_savings','create')
+  or public.can_manage_module('optional_savings','update')
   or public.can_manage_module('members','view')
   or public.can_manage_module('members','create')
 );
-drop policy if exists optional_savings_products_manage on public.optional_savings_products;
-create policy optional_savings_products_manage on public.optional_savings_products for all to authenticated
-using (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'))
-with check (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'));
+drop policy if exists optional_savings_products_insert on public.optional_savings_products;
+create policy optional_savings_products_insert on public.optional_savings_products for insert to authenticated
+with check (public.can_manage_module('optional_savings','create'));
+drop policy if exists optional_savings_products_update on public.optional_savings_products;
+create policy optional_savings_products_update on public.optional_savings_products for update to authenticated
+using (public.can_manage_module('optional_savings','update'))
+with check (public.can_manage_module('optional_savings','update'));
 
 drop policy if exists member_savings_read on public.member_savings_enrollments;
 create policy member_savings_read on public.member_savings_enrollments for select to authenticated
