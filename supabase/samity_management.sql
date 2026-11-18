@@ -392,3 +392,90 @@ using (
   or public.can_manage_module('samity_area_change','view')
   or public.can_manage_module('samity_area_change','create')
 );
+
+
+-- Samity branch transfer: keep the current branch on samities and preserve every change.
+alter table public.samities
+  add column if not exists branch_id uuid references public.branches(id) on delete restrict;
+create index if not exists samities_branch_idx on public.samities(branch_id);
+
+create table if not exists public.samity_branch_changes (
+  id uuid primary key default gen_random_uuid(),
+  samity_id uuid not null references public.samities(id) on delete restrict,
+  old_branch_id uuid references public.branches(id) on delete restrict,
+  new_branch_id uuid not null references public.branches(id) on delete restrict,
+  effective_date date not null default current_date,
+  reason text not null,
+  changed_by uuid references public.profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  check (old_branch_id is distinct from new_branch_id)
+);
+
+alter table public.samity_branch_changes enable row level security;
+drop policy if exists samity_branch_changes_read on public.samity_branch_changes;
+create policy samity_branch_changes_read on public.samity_branch_changes
+for select to authenticated
+using (
+  public.can_manage_module('samity_branch_transfer','view')
+  or public.can_manage_module('samity_branch_transfer','create')
+);
+drop policy if exists samity_branch_changes_insert on public.samity_branch_changes;
+create policy samity_branch_changes_insert on public.samity_branch_changes
+for insert to authenticated
+with check (
+  public.can_manage_module('samity_branch_transfer','create')
+  and changed_by = (select auth.uid())
+);
+
+create or replace function public.transfer_samity_branch(
+  p_samity_id uuid,
+  p_new_branch_id uuid,
+  p_effective_date date,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old_branch_id uuid;
+begin
+  if auth.uid() is null or not public.can_manage_module('samity_branch_transfer','create') then
+    raise exception 'Permission denied';
+  end if;
+  if p_new_branch_id is null or nullif(trim(p_reason),'') is null then
+    raise exception 'নতুন শাখা ও স্থানান্তরের কারণ দিতে হবে';
+  end if;
+  perform 1 from public.branches where id = p_new_branch_id and is_active = true;
+  if not found then raise exception 'নির্বাচিত নতুন শাখাটি সক্রিয় নয় বা পাওয়া যায়নি'; end if;
+
+  select branch_id into v_old_branch_id
+  from public.samities where id = p_samity_id for update;
+  if not found then raise exception 'Samity not found'; end if;
+  if v_old_branch_id = p_new_branch_id then
+    raise exception 'নির্বাচিত শাখাটি বর্তমান শাখার একই';
+  end if;
+
+  insert into public.samity_branch_changes (
+    samity_id, old_branch_id, new_branch_id, effective_date, reason, changed_by
+  ) values (
+    p_samity_id, v_old_branch_id, p_new_branch_id,
+    coalesce(p_effective_date,current_date), trim(p_reason), auth.uid()
+  );
+
+  update public.samities set branch_id = p_new_branch_id where id = p_samity_id;
+end;
+$$;
+grant execute on function public.transfer_samity_branch(uuid,uuid,date,text) to authenticated;
+
+drop policy if exists samities_read on public.samities;
+create policy samities_read on public.samities for select to authenticated
+using (
+  public.can_manage_module('samity','view')
+  or public.can_manage_module('samity','create')
+  or public.can_manage_module('samity','update')
+  or public.can_manage_module('samity_day_change','view')
+  or public.can_manage_module('samity_day_change','create')
+  or public.can_manage_module('samity_branch_transfer','view')
+  or public.can_manage_module('samity_branch_transfer','create')
+);
