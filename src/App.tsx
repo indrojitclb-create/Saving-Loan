@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { configured, configurationError, supabase } from './lib/supabase';
 
-type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 'reports' | 'audit';
+type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_area_change' | 'samity_staff' | 'employee_transfer' | 'member_transfer';
 type Employee = {
   id: string; employee_code: string; full_name: string; phone: string | null;
   email: string | null; branch_id: string | null; designation: string | null;
@@ -22,6 +22,13 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'loans', label: 'Loan Management', desc: 'ঋণ বিতরণ, কিস্তি ও বকেয়া' },
   { key: 'reports', label: 'Reports', desc: 'দৈনিক, মাসিক ও বার্ষিক রিপোর্ট' },
   { key: 'audit', label: 'Audit Log', desc: 'ব্যবহারকারীর কার্যক্রমের রেকর্ড' },
+  { key: 'area_master', label: 'কেন্দ্রীয় কর্ম এলাকা', desc: 'বিভাগ, জেলা, উপজেলা, পোস্ট অফিস ও গ্রাম' },
+  { key: 'samity', label: 'সমিতি গঠন', desc: 'নতুন সমিতি তৈরি ও পরিচালনা' },
+  { key: 'samity_day_change', label: 'সমিতির দিন ও সময় পরিবর্তন', desc: 'সমিতির সাপ্তাহিক সভার সময়সূচি পরিবর্তন' },
+  { key: 'samity_area_change', label: 'সমিতির কর্ম এলাকা পরিবর্তন', desc: 'সমিতির নির্ধারিত এলাকা পরিবর্তন' },
+  { key: 'samity_staff', label: 'সমিতির কর্মী পরিবর্তন', desc: 'সমিতিতে কর্মী নিয়োগ ও পরিবর্তন' },
+  { key: 'employee_transfer', label: 'কর্মীর কর্ম এলাকা পরিবর্তন', desc: 'কর্মীকে অন্য কর্ম এলাকায় স্থানান্তর' },
+  { key: 'member_transfer', label: 'সদস্যের সমিতি পরিবর্তন', desc: 'সদস্যকে অন্য সমিতিতে স্থানান্তর' },
 ];
 
 const emptyEmployee = {
