@@ -58,7 +58,7 @@ drop policy if exists optional_savings_versions_insert on public.optional_saving
 create policy optional_savings_versions_insert
 on public.optional_savings_product_versions for insert to authenticated
 with check (
-  public.can_manage_module('optional_savings','create')
+  (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'))
   and created_by = (select auth.uid())
 );
 
@@ -70,7 +70,7 @@ using (
   public.can_manage_module('optional_savings','update')
   and not exists (
     select 1 from public.member_savings_enrollments e
-    where e.product_version_id = id
+    where e.product_version_id = optional_savings_product_versions.id
   )
 )
 with check (
