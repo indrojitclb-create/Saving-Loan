@@ -319,3 +319,21 @@ using (
   or public.can_manage_module('samity_day_change','view')
   or public.can_manage_module('samity_day_change','create')
 );
+
+
+-- Samity gender/type: male or female groups.
+alter table public.samities
+  add column if not exists samity_gender text;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'samities_gender_check'
+      and conrelid = 'public.samities'::regclass
+  ) then
+    alter table public.samities
+      add constraint samities_gender_check
+      check (samity_gender is null or samity_gender in ('male','female'));
+  end if;
+end $$;
