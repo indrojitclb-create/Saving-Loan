@@ -211,7 +211,7 @@ using (
 );
 drop policy if exists member_documents_insert on public.member_documents;
 create policy member_documents_insert on public.member_documents for insert to authenticated
-with check (public.can_access_member(member_id) and public.can_manage_module('members','create') and uploaded_by = (select auth.uid()));
+with check (public.can_access_member(member_id) and (public.can_manage_module('members','create') or public.can_manage_module('members','update')) and uploaded_by = (select auth.uid()));
 drop policy if exists member_documents_delete on public.member_documents;
 create policy member_documents_delete on public.member_documents for delete to authenticated
 using (public.can_access_member(member_id) and public.can_manage_module('members','delete'));
@@ -239,7 +239,7 @@ with check (
     select 1 from public.members m
     where m.id::text = split_part(name,'/',1) and public.can_access_member(m.id)
   )
-  and public.can_manage_module('members','create')
+  and (public.can_manage_module('members','create') or public.can_manage_module('members','update'))
 );
 drop policy if exists member_documents_storage_delete on storage.objects;
 create policy member_documents_storage_delete on storage.objects for delete to authenticated
