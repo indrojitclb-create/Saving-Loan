@@ -48,7 +48,8 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
   const [existingLookup,setExistingLookup]=useState('');
   const [notice,setNotice]=useState('');
   const [busy,setBusy]=useState(false);
-  const [schemeForm,setSchemeForm]=useState({product_name:'',installment_amount:'100',term_months:'60',interest_rate:'',effective_from:new Date().toISOString().slice(0,10),description:''});
+  const [schemeForm,setSchemeForm]=useState({product_name:'',term_months:'60',interest_rate:'7',effective_from:new Date().toISOString().slice(0,10),description:''});
+  const [optionalAmount,setOptionalAmount]=useState('100');
   const [schemeFile,setSchemeFile]=useState<File|null>(null);
   const [editingSchemeId,setEditingSchemeId]=useState<string|null>(null);
   const db:any=supabase;
@@ -112,12 +113,14 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
       const enrollments:any[]=[];
       if(Number(form.mandatory_amount)>0)enrollments.push({member_id:data.id,savings_type:'mandatory',amount:Number(form.mandatory_amount),created_by:userData.user?.id});
       if(form.optional_product_id){
+        const chosenAmount=Number(optionalAmount);
+        if(!Number.isInteger(chosenAmount)||chosenAmount<100||chosenAmount>2000||chosenAmount%100!==0)throw new Error('ঐচ্ছিক সঞ্চয়ের মাসিক জমা ১০০ থেকে ২,০০০ টাকার মধ্যে ১০০ টাকার গুণিতক হতে হবে।');
         const p=schemes.find(x=>x.id===form.optional_product_id);
         if(p){
           const today=new Date().toISOString().slice(0,10);
           const version=schemeVersions.filter(v=>v.product_id===p.id&&v.is_active&&v.effective_from<=today).sort((a,b)=>b.version_no-a.version_no)[0];
           if(!version)throw new Error('নির্বাচিত স্কিমের কার্যকর সংস্করণ পাওয়া যায়নি।');
-          enrollments.push({member_id:data.id,savings_type:'optional',product_id:p.id,product_version_id:version.id,version_no_snapshot:version.version_no,interest_rate_snapshot:version.interest_rate,conditions_snapshot:version.conditions,scheme_effective_from_snapshot:version.effective_from,amount:Number(version.installment_amount),term_months:version.term_months,product_name_snapshot:p.product_name,created_by:userData.user?.id});
+          enrollments.push({member_id:data.id,savings_type:'optional',product_id:p.id,product_version_id:version.id,version_no_snapshot:version.version_no,interest_rate_snapshot:version.interest_rate,conditions_snapshot:version.conditions,scheme_effective_from_snapshot:version.effective_from,amount:chosenAmount,term_months:version.term_months,product_name_snapshot:p.product_name,created_by:userData.user?.id});
         }
       }
       setSelectedMember(data);setTab('register');setStep(4);await refresh();
@@ -130,9 +133,9 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
   async function saveScheme(e:FormEvent){
     e.preventDefault();
     if(!canDo('optional_savings',editingSchemeId?'update':'create'))return;
-    const amount=Number(schemeForm.installment_amount), term=Number(schemeForm.term_months);
+    const term=Number(schemeForm.term_months);
     const rate=schemeForm.interest_rate===''?null:Number(schemeForm.interest_rate);
-    if(amount<100||amount>2000||amount%100!==0){setNotice('মাসিক জমা ১০০ থেকে ২,০০০ টাকার মধ্যে এবং ১০০ টাকার গুণিতক হতে হবে।');return;}
+    
     if(!Number.isInteger(term)||term<1){setNotice('মেয়াদ মাসে নির্ধারণ করুন।');return;}
     if(rate!==null&&(!Number.isFinite(rate)||rate<0)){setNotice('সঠিক সুদের হার লিখুন।');return;}
     if(!schemeForm.effective_from){setNotice('কার্যকর হওয়ার তারিখ দিন।');return;}
@@ -142,7 +145,7 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
       let productId=editingSchemeId;
       if(!productId){
         const {data:product,error}=await db.from('optional_savings_products').insert({
-          product_name:schemeForm.product_name.trim(),installment_amount:amount,term_months:term,
+          product_name:schemeForm.product_name.trim(),installment_amount:100,term_months:term,
           description:schemeForm.description||null,created_by:userData.user?.id
         }).select('*').single();
         if(error)throw error;
@@ -160,12 +163,12 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
         fileMeta={rules_file_name:schemeFile.name,rules_storage_path:path,rules_file_type:schemeFile.type,rules_file_size:schemeFile.size};
       }
       const {error:versionError}=await db.from('optional_savings_product_versions').insert({
-        product_id:productId,version_no:versionNo,installment_amount:amount,term_months:term,
+        product_id:productId,version_no:versionNo,installment_amount:null,term_months:term,
         interest_rate:rate,effective_from:schemeForm.effective_from,conditions:{},
         calculation_method:'pending_policy_mapping',created_by:userData.user?.id,...fileMeta
       });
       if(versionError)throw versionError;
-      setSchemeForm({product_name:'',installment_amount:'100',term_months:'60',interest_rate:'',effective_from:new Date().toISOString().slice(0,10),description:''});
+      setSchemeForm({product_name:'',term_months:'60',interest_rate:'7',effective_from:new Date().toISOString().slice(0,10),description:''});
       setSchemeFile(null);setEditingSchemeId(null);
       setNotice('স্কিমের নতুন সংস্করণ সংরক্ষণ হয়েছে। পুরোনো সদস্যদের সংস্করণ অপরিবর্তিত থাকবে।');
       await refresh();
@@ -231,19 +234,19 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
         {field('Permanent House / Street','permanent_house_street')}{field('Permanent Contact No','permanent_contact_no')}
       </div>}<div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(0)}>পূর্ববর্তী</button><button type="button" onClick={()=>setStep(2)}>পরবর্তী</button></div></>}
       {step===2&&<><div className="form-grid">{field('Member Type','member_type',false,'text',['General'])}{field('Profession','profession',true)}{field('Religion','religion',false,'text',['Muslim','Hindu','Christian','Buddhist','Other'])}{field('Remarks','remarks')}{field('No of Family Member','family_member_count',false,'number')}{field('Yearly Income','yearly_income',false,'number')}{field('Land Area','land_area',false,'number')}{field('Land Area Unit','land_area_unit',false,'text',['Acre','Decimal','Bigha'])}{field('Note','other_note')}</div><div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(1)}>পূর্ববর্তী</button><button type="button" onClick={()=>setStep(3)}>পরবর্তী</button></div></>}
-      {step===3&&<form onSubmit={saveMember}><div className="form-grid">{editingMemberId?<p className="muted">পুরোনো সদস্যের সঞ্চয় চুক্তি পরিবর্তন এখানে করা হবে না; নতুন সঞ্চয়ের হিসাব Savings মডিউলে পরিচালনা করুন।</p>:<>{field('Mandatory Savings Amount','mandatory_amount',false,'number')}<label className="field">Optional Savings Scheme<select value={form.optional_product_id} onChange={e=>set('optional_product_id',e.target.value)}><option value="">কোনো স্কিম নয়</option>{schemes.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.product_name} — ৳{x.installment_amount} / {x.term_months} মাস</option>)}</select></label></>}</div><p className="muted">Optional Savings স্কিম আগে Optional Savings Setup থেকে তৈরি করতে হবে।</p><div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(2)}>পূর্ববর্তী</button><button disabled={busy}>{editingMemberId?'পরিবর্তন সংরক্ষণ করুন':'সদস্য সংরক্ষণ করুন'}</button></div></form>}
+      {step===3&&<form onSubmit={saveMember}><div className="form-grid">{editingMemberId?<p className="muted">পুরোনো সদস্যের সঞ্চয় চুক্তি পরিবর্তন এখানে করা হবে না; নতুন সঞ্চয়ের হিসাব Savings মডিউলে পরিচালনা করুন।</p>:<>{field('Mandatory Savings Amount','mandatory_amount',false,'number')}<label className="field">Optional Savings Scheme<select value={form.optional_product_id} onChange={e=>set('optional_product_id',e.target.value)}><option value="">কোনো স্কিম নয়</option>{schemes.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.product_name}</option>)}</select></label></>}</div><p className="muted">Optional Savings স্কিম আগে Optional Savings Setup থেকে তৈরি করতে হবে।</p><div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(2)}>পূর্ববর্তী</button><button disabled={busy}>{editingMemberId?'পরিবর্তন সংরক্ষণ করুন':'সদস্য সংরক্ষণ করুন'}</button></div></form>}
       {step===4&&<><h3>{selectedMember?'Member Documents — '+selectedMember.member_code:'ডকুমেন্ট আপলোডের জন্য আগে সদস্য সংরক্ষণ করুন'}</h3>{selectedMember?<div className="table-wrap"><table><thead><tr><th>Type</th><th>Name</th><th>Uploaded By</th><th>Size</th><th>Date Modified</th><th>Action</th></tr></thead><tbody>{documentTypes.map(([type,label])=>{const doc=documents.find(x=>x.document_type===type);return <tr key={type}><td>{label}</td><td>{doc?.file_name||'—'}</td><td>{doc?.uploaded_by_name||'—'}</td><td>{doc?Math.ceil(doc.file_size/1024)+' KB':'—'}</td><td>{doc?String(doc.created_at).slice(0,10):'—'}</td><td>{doc?<><button type="button" className="secondary" onClick={()=>viewDocument(doc)}>View</button> {canDo('members','delete')&&<button type="button" className="danger" onClick={()=>deleteDocument(doc)}>Delete</button>}</>:<label className="upload-label">Upload<input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" disabled={(!canDo('members','create')&&!canDo('members','update'))||busy} onChange={e=>{const f=e.target.files?.[0];if(f)uploadDocument(type,f);e.currentTarget.value='';}} /></label>}</td></tr>})}</tbody></table></div>:<p className="muted">প্রথমে Basic Info থেকে সদস্য সংরক্ষণ করুন, তারপর এই ট্যাবে ছবি, স্বাক্ষর ও অন্যান্য কাগজপত্র আপলোড করতে পারবেন।</p>}<div className="form-actions"><button type="button" className="secondary" onClick={()=>setStep(3)}>পূর্ববর্তী</button><button type="button" onClick={()=>setTab('list')}>সদস্য তালিকায় ফিরুন</button></div></>}
     </>}
     {tab==='schemes'&&<><h3>Optional Savings Setup — স্কিম ও সংস্করণ</h3>{(canDo('optional_savings','create')||editingSchemeId)&&<form onSubmit={saveScheme}><div className="form-grid">
       <label className="field">Scheme Name *<input required disabled={Boolean(editingSchemeId)} value={schemeForm.product_name} onChange={e=>setSchemeForm({...schemeForm,product_name:e.target.value})}/></label>
-      <label className="field">মাসিক জমা (৳) *<select required value={schemeForm.installment_amount} onChange={e=>setSchemeForm({...schemeForm,installment_amount:e.target.value})}>{Array.from({length:20},(_,i)=>(i+1)*100).map(n=><option key={n} value={String(n)}>৳{n}</option>)}</select></label>
+      
       <label className="field">মেয়াদ (মাস) *<input required type="number" min="1" step="1" value={schemeForm.term_months} onChange={e=>setSchemeForm({...schemeForm,term_months:e.target.value})}/></label>
       <label className="field">সুদের হার (%)<input type="number" min="0" step="0.0001" value={schemeForm.interest_rate} onChange={e=>setSchemeForm({...schemeForm,interest_rate:e.target.value})}/></label>
       <label className="field">কার্যকর হওয়ার তারিখ *<input required type="date" value={schemeForm.effective_from} onChange={e=>setSchemeForm({...schemeForm,effective_from:e.target.value})}/></label>
       <label className="field">বিবরণ<input value={schemeForm.description} onChange={e=>setSchemeForm({...schemeForm,description:e.target.value})}/></label>
       <label className="field">নীতিমালা / হিসাবের ফাইল (PDF, XLS, XLSX)<input type="file" accept=".pdf,.xls,.xlsx,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={e=>setSchemeFile(e.target.files?.[0]||null)}/></label>
-    </div><p className="muted">প্রতিটি পরিবর্তনে নতুন সংস্করণ তৈরি হবে। আগের সদস্যদের শর্ত বদলাবে না। ফাইল সংরক্ষণ হবে; এর হিসাবের সূত্র যাচাই করে স্বয়ংক্রিয় ক্যালকুলেশন পরের ধাপে যুক্ত হবে।</p><div className="form-actions"><button disabled={busy}>{editingSchemeId?'নতুন সংস্করণ সংরক্ষণ':'নতুন স্কিম তৈরি'}</button>{editingSchemeId&&<button type="button" className="secondary" onClick={()=>{setEditingSchemeId(null);setSchemeForm({product_name:'',installment_amount:'100',term_months:'60',interest_rate:'',effective_from:new Date().toISOString().slice(0,10),description:''});setSchemeFile(null);}}>বাতিল</button>}</div></form>}
-    <div className="table-wrap"><table><thead><tr><th>স্কিম</th><th>সংস্করণ</th><th>মাসিক জমা</th><th>মেয়াদ</th><th>সুদ</th><th>কার্যকর তারিখ</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody>{schemes.map(x=>{const vs=schemeVersions.filter(v=>v.product_id===x.id).sort((a,b)=>b.version_no-a.version_no);const latest=vs[0];return <tr key={x.id}><td>{x.product_name}</td><td>{latest?'v'+latest.version_no:'সংস্করণ নেই'}</td><td>{latest?'৳'+latest.installment_amount:'—'}</td><td>{latest?latest.term_months+' মাস':'—'}</td><td>{latest&&latest.interest_rate!==null?latest.interest_rate+'%':'—'}</td><td>{latest?.effective_from||'—'}</td><td>{x.is_active?'Active':'Inactive'}</td><td>{canDo('optional_savings','update')&&<button type="button" className="secondary" onClick={()=>{setEditingSchemeId(x.id);setSchemeForm({product_name:x.product_name,installment_amount:String(latest?.installment_amount||100),term_months:String(latest?.term_months||60),interest_rate:latest?.interest_rate==null?'':String(latest.interest_rate),effective_from:new Date().toISOString().slice(0,10),description:x.description||''});setSchemeFile(null);}}>নতুন সংস্করণ</button>}</td></tr>})}</tbody></table></div></>}
+    </div><p className="muted">প্রতিটি পরিবর্তনে নতুন সংস্করণ তৈরি হবে। আগের সদস্যদের শর্ত বদলাবে না। ফাইল সংরক্ষণ হবে; এর হিসাবের সূত্র যাচাই করে স্বয়ংক্রিয় ক্যালকুলেশন পরের ধাপে যুক্ত হবে।</p><div className="form-actions"><button disabled={busy}>{editingSchemeId?'নতুন সংস্করণ সংরক্ষণ':'নতুন স্কিম তৈরি'}</button>{editingSchemeId&&<button type="button" className="secondary" onClick={()=>{setEditingSchemeId(null);setSchemeForm({product_name:'',term_months:'60',interest_rate:'7',effective_from:new Date().toISOString().slice(0,10),description:''});setSchemeFile(null);}}>বাতিল</button>}</div></form>}
+    <div className="table-wrap"><table><thead><tr><th>স্কিম</th><th>সংস্করণ</th><th>মাসিক জমার সীমা</th><th>মেয়াদ</th><th>সুদ</th><th>কার্যকর তারিখ</th><th>অবস্থা</th><th>কাজ</th></tr></thead><tbody>{schemes.map(x=>{const vs=schemeVersions.filter(v=>v.product_id===x.id).sort((a,b)=>b.version_no-a.version_no);const latest=vs[0];return <tr key={x.id}><td>{x.product_name}</td><td>{latest?'v'+latest.version_no:'সংস্করণ নেই'}</td><td>{latest?'৳১০০–৳২,০০০ (সদস্য নির্বাচন)':'—'}</td><td>{latest?latest.term_months+' মাস':'—'}</td><td>{latest&&latest.interest_rate!==null?latest.interest_rate+'%':'—'}</td><td>{latest?.effective_from||'—'}</td><td>{x.is_active?'Active':'Inactive'}</td><td>{canDo('optional_savings','update')&&<button type="button" className="secondary" onClick={()=>{setEditingSchemeId(x.id);setSchemeForm({product_name:x.product_name,term_months:String(latest?.term_months||60),interest_rate:latest?.interest_rate==null?'':String(latest.interest_rate),effective_from:new Date().toISOString().slice(0,10),description:x.description||''});setSchemeFile(null);}}>নতুন সংস্করণ</button>}</td></tr>})}</tbody></table></div></>}
 
   </section>;
 }
