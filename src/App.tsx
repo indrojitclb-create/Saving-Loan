@@ -13,6 +13,8 @@ type Employee = {
   is_active: boolean; branch?: { branch_name?: string } | null;
 };
 type Branch = { id: string; branch_code: string; branch_name: string; area_name: string | null; is_active: boolean };
+type AreaType = 'division' | 'district' | 'upazila' | 'post_office' | 'village';
+type AreaRow = { id: string; name: string; is_active: boolean; division_id?: string; district_id?: string; upazila_id?: string; post_office_id?: string; post_code?: string };
 
 const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'dashboard', label: 'ড্যাশবোর্ড', desc: 'প্রতিষ্ঠানের সার্বিক চিত্র' },
@@ -65,6 +67,12 @@ export default function App() {
   const [permissionUser, setPermissionUser] = useState('');
   const [permissionRows, setPermissionRows] = useState<any[]>([]);
   const [myPermissions, setMyPermissions] = useState<any[]>([]);
+  const [areaDivisions, setAreaDivisions] = useState<AreaRow[]>([]);
+  const [areaDistricts, setAreaDistricts] = useState<AreaRow[]>([]);
+  const [areaUpazilas, setAreaUpazilas] = useState<AreaRow[]>([]);
+  const [areaPostOffices, setAreaPostOffices] = useState<AreaRow[]>([]);
+  const [areaVillages, setAreaVillages] = useState<AreaRow[]>([]);
+  const [areaForm, setAreaForm] = useState<{type: AreaType; id: string; name: string; parentId: string; postCode: string}>({type:'division',id:'',name:'',parentId:'',postCode:''});
   const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', users: 'User Management', savings: 'Savings', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_area_change: 'সমিতির কর্ম এলাকা পরিবর্তন', samity_staff: 'সমিতির কর্মী নিয়োগ ও পরিবর্তন', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন' };
 
   const db: any = supabase;
@@ -102,11 +110,16 @@ export default function App() {
       if (ownPermissions.error) setError('আপনার Permission পড়া যায়নি: ' + ownPermissions.error.message);
       setMyPermissions(ownPermissions.data || []);
     }
-    const [employeeResult, branchResult, memberResult, userResult] = await Promise.all([
+    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult] = await Promise.all([
       db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
       db.from('members').select('id', { count: 'exact', head: true }),
       db.from('profiles').select('id', { count: 'exact', head: true }),
+      db.from('area_divisions').select('*').order('name'),
+      db.from('area_districts').select('*').order('name'),
+      db.from('area_upazilas').select('*').order('name'),
+      db.from('area_post_offices').select('*').order('name'),
+      db.from('area_villages').select('*').order('name'),
     ]);
     if (employeeResult.error) setError('কর্মী তালিকা পড়া যায়নি: ' + employeeResult.error.message);
     else setEmployees(employeeResult.data || []);
@@ -114,6 +127,11 @@ export default function App() {
     else setBranches(branchResult.data || []);
     setMemberCount(memberResult.error ? null : (memberResult.count ?? 0));
     setUserCount(userResult.error ? null : (userResult.count ?? 0));
+    setAreaDivisions(divisionsResult.data || []);
+    setAreaDistricts(districtsResult.data || []);
+    setAreaUpazilas(upazilasResult.data || []);
+    setAreaPostOffices(postOfficesResult.data || []);
+    setAreaVillages(villagesResult.data || []);
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
       const userList = await db.from('profiles').select('id,full_name,login_id,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
@@ -227,6 +245,42 @@ export default function App() {
     setShowBranchForm(false); await loadData();
   }
 
+
+  function editArea(type: AreaType, row: AreaRow) {
+    const parentId = type === 'district' ? row.division_id : type === 'upazila' ? row.district_id : type === 'post_office' ? row.upazila_id : type === 'village' ? row.post_office_id : '';
+    setAreaForm({ type, id: row.id, name: row.name, parentId: parentId || '', postCode: row.post_code || '' });
+  }
+
+  async function saveArea(e: FormEvent) {
+    e.preventDefault();
+    if (!canDo('area_master', areaForm.id ? 'update' : 'create')) return;
+    const name = areaForm.name.trim();
+    if (!name) { setNotice('নাম লিখুন।'); return; }
+    let table = 'area_divisions';
+    let payload: any = { name };
+    if (areaForm.type === 'district') { table = 'area_districts'; payload.division_id = areaForm.parentId; }
+    if (areaForm.type === 'upazila') { table = 'area_upazilas'; payload.district_id = areaForm.parentId; }
+    if (areaForm.type === 'post_office') { table = 'area_post_offices'; payload.upazila_id = areaForm.parentId; payload.post_code = areaForm.postCode.trim(); }
+    if (areaForm.type === 'village') { table = 'area_villages'; payload.post_office_id = areaForm.parentId; }
+    if (areaForm.type !== 'division' && !areaForm.parentId) { setNotice('আগে সংশ্লিষ্ট উপরের এলাকার নাম নির্বাচন করুন।'); return; }
+    setPageBusy(true); setNotice('');
+    const result = areaForm.id
+      ? await db.from(table).update(payload).eq('id', areaForm.id)
+      : await db.from(table).insert(payload);
+    setPageBusy(false);
+    if (result.error) { setNotice('তথ্য সংরক্ষণ হয়নি: ' + result.error.message); return; }
+    setNotice('কেন্দ্রীয় কর্ম এলাকার তথ্য সংরক্ষণ হয়েছে।');
+    setAreaForm({type: areaForm.type,id:'',name:'',parentId:'',postCode:''});
+    await loadData();
+  }
+
+  async function toggleArea(type: AreaType, row: AreaRow) {
+    if (!canDo('area_master', 'update')) return;
+    const table = type === 'division' ? 'area_divisions' : type === 'district' ? 'area_districts' : type === 'upazila' ? 'area_upazilas' : type === 'post_office' ? 'area_post_offices' : 'area_villages';
+    const result = await db.from(table).update({is_active: !row.is_active}).eq('id', row.id);
+    if (result.error) setNotice('অবস্থা পরিবর্তন হয়নি: ' + result.error.message);
+    else { setNotice(row.is_active ? 'এলাকাটি নিষ্ক্রিয় করা হয়েছে।' : 'এলাকাটি সক্রিয় করা হয়েছে।'); await loadData(); }
+  }
 
   async function createUser(e: FormEvent) {
     e.preventDefault();
@@ -403,7 +457,31 @@ export default function App() {
           <div className="form-actions"><button disabled={pageBusy} onClick={savePermissions}>Permission সংরক্ষণ</button></div>
         </div>}
       </section>}
-      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'area_master' && <section className="workspace">
+        <div className="section-head"><div><h2>কেন্দ্রীয় কর্ম এলাকা</h2><p>একবার এখানে এলাকার তথ্য যোগ করলে সমিতি গঠনের সময় তালিকা থেকে নির্বাচন করা যাবে।</p></div></div>
+        {canDo('area_master', 'create') || canDo('area_master', 'update') ? <form className="employee-form" onSubmit={saveArea}>
+          <h3>{areaForm.id ? 'এলাকার তথ্য সম্পাদনা' : 'নতুন এলাকার তথ্য যোগ করুন'}</h3>
+          <div className="form-grid">
+            <label>তথ্যের ধরন<select value={areaForm.type} onChange={e => setAreaForm({type:e.target.value as AreaType,id:'',name:'',parentId:'',postCode:''})}>
+              <option value="division">বিভাগ</option><option value="district">জেলা</option><option value="upazila">উপজেলা</option><option value="post_office">পোস্ট অফিস</option><option value="village">গ্রাম</option>
+            </select></label>
+            {areaForm.type === 'district' && <label>বিভাগ নির্বাচন<select required value={areaForm.parentId} onChange={e => setAreaForm({...areaForm,parentId:e.target.value})}><option value="">বিভাগ নির্বাচন</option>{areaDivisions.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
+            {areaForm.type === 'upazila' && <label>জেলা নির্বাচন<select required value={areaForm.parentId} onChange={e => setAreaForm({...areaForm,parentId:e.target.value})}><option value="">জেলা নির্বাচন</option>{areaDistricts.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
+            {areaForm.type === 'post_office' && <label>উপজেলা নির্বাচন<select required value={areaForm.parentId} onChange={e => setAreaForm({...areaForm,parentId:e.target.value})}><option value="">উপজেলা নির্বাচন</option>{areaUpazilas.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>}
+            {areaForm.type === 'village' && <label>পোস্ট অফিস নির্বাচন<select required value={areaForm.parentId} onChange={e => setAreaForm({...areaForm,parentId:e.target.value})}><option value="">পোস্ট অফিস নির্বাচন</option>{areaPostOffices.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name} {x.post_code ? '('+x.post_code+')' : ''}</option>)}</select></label>}
+            <label>{areaForm.type === 'division' ? 'বিভাগের নাম' : areaForm.type === 'district' ? 'জেলার নাম' : areaForm.type === 'upazila' ? 'উপজেলার নাম' : areaForm.type === 'post_office' ? 'পোস্ট অফিসের নাম' : 'গ্রামের নাম'} *<input required value={areaForm.name} onChange={e=>setAreaForm({...areaForm,name:e.target.value})}/></label>
+            {areaForm.type === 'post_office' && <label>পোস্ট কোড<input value={areaForm.postCode} onChange={e=>setAreaForm({...areaForm,postCode:e.target.value})} placeholder="যেমন: 9000"/></label>}
+          </div>
+          <div className="form-actions"><button disabled={pageBusy}>{pageBusy ? 'সংরক্ষণ হচ্ছে...' : areaForm.id ? 'পরিবর্তন সংরক্ষণ' : 'এলাকার তথ্য যোগ করুন'}</button>{areaForm.id && <button type="button" className="secondary" onClick={()=>setAreaForm({...areaForm,id:'',name:'',parentId:'',postCode:''})}>বাতিল</button>}</div>
+        </form> : <div className="notice">আপনার এই মডিউলে তথ্য যোগ বা সম্পাদনার অনুমতি নেই।</div>}
+        {([['বিভাগ','division',areaDivisions],['জেলা','district',areaDistricts],['উপজেলা','upazila',areaUpazilas],['পোস্ট অফিস','post_office',areaPostOffices],['গ্রাম','village',areaVillages]] as [string,AreaType,AreaRow[]][]).map(([label,type,rows]) => <div className="branch-list" key={type}>
+          <h3>{label} তালিকা ({rows.length})</h3><div className="table-wrap"><table><thead><tr><th>নাম</th>{type === 'post_office' && <th>পোস্ট কোড</th>}<th>অবস্থা</th>{canDo('area_master','update') && <th>কার্যক্রম</th>}</tr></thead><tbody>
+            {rows.map(row=><tr key={row.id}><td>{row.name}</td>{type === 'post_office' && <td>{row.post_code || '—'}</td>}<td>{row.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'}</td>{canDo('area_master','update') && <td><div className="row-actions"><button className="small-action" onClick={()=>editArea(type,row)}>Edit</button><button className="small-action secondary" onClick={()=>toggleArea(type,row)}>{row.is_active ? 'বন্ধ' : 'চালু'}</button></div></td>}</tr>)}
+            {rows.length===0 && <tr><td colSpan={type === 'post_office' ? (canDo('area_master','update')?4:3) : (canDo('area_master','update')?3:2)} className="empty">এখনও কোনো তথ্য যোগ করা হয়নি।</td></tr>}
+          </tbody></table></div>
+        </div>)}
+      </section>}
+      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
