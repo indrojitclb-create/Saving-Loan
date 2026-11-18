@@ -90,6 +90,7 @@ create table if not exists public.member_documents (
   content_type text,
   file_size bigint not null default 0,
   uploaded_by uuid references public.profiles(id),
+  uploaded_by_name text,
   created_at timestamptz not null default now()
 );
 create index if not exists member_documents_member_idx on public.member_documents(member_id);
@@ -143,6 +144,7 @@ for each row execute function public.assign_member_code();
 
 alter table public.optional_savings_products enable row level security;
 alter table public.member_savings_enrollments enable row level security;
+alter table public.member_documents add column if not exists uploaded_by_name text;
 alter table public.member_documents enable row level security;
 
 -- Enforce both module permissions and Branch-level data access.
