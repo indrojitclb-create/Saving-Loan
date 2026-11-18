@@ -5,9 +5,9 @@ create table if not exists public.optional_savings_product_versions (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references public.optional_savings_products(id) on delete restrict,
   version_no integer not null check (version_no > 0),
-  installment_amount numeric(14,2) not null check (
-    installment_amount between 100 and 2000
-    and mod(installment_amount,100)=0
+  installment_amount numeric(14,2) check (
+    installment_amount is null
+    or (installment_amount between 100 and 2000 and mod(installment_amount,100)=0)
   ),
   term_months integer not null check (term_months > 0),
   interest_rate numeric(7,4) check (interest_rate is null or interest_rate >= 0),
@@ -117,3 +117,12 @@ using (
   bucket_id = 'scheme-rules'
   and public.can_manage_module('optional_savings','update')
 );
+
+-- Allow a scheme version to define the permitted range while each member chooses their own installment.
+alter table public.optional_savings_product_versions
+  alter column installment_amount drop not null;
+alter table public.optional_savings_product_versions
+  drop constraint if exists optional_savings_product_versions_installment_amount_check;
+alter table public.optional_savings_product_versions
+  add constraint optional_savings_product_versions_installment_amount_check
+  check (installment_amount is null or (installment_amount between 100 and 2000 and mod(installment_amount,100)=0));
