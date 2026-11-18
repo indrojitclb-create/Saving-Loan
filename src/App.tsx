@@ -367,6 +367,31 @@ export default function App() {
   }
 
 
+  async function saveSamityStaffTransfer(e: FormEvent) {
+    e.preventDefault();
+    if (!canDo('samity_staff','create')) return;
+    if (!staffTransferForm.samity_id || !staffTransferForm.employee_id || !staffTransferForm.reason.trim()) { setNotice('সমিতি, নতুন কর্মী ও কারণ লিখুন।'); return; }
+    setPageBusy(true); setNotice('');
+    const { error: rpcError } = await db.rpc('transfer_samity_staff', { p_samity_id:staffTransferForm.samity_id, p_new_employee_id:staffTransferForm.employee_id, p_effective_date:staffTransferForm.effective_date, p_reason:staffTransferForm.reason.trim() });
+    setPageBusy(false);
+    if (rpcError) { setNotice('কর্মী স্থানান্তর হয়নি: '+rpcError.message); return; }
+    setNotice('সমিতির কর্মী স্থানান্তর হয়েছে এবং ইতিহাস সংরক্ষিত হয়েছে।');
+    setStaffTransferForm({samity_id:'',employee_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
+    await loadData();
+  }
+
+  async function saveSamityBranchTransfer(e: FormEvent) {
+    e.preventDefault();
+    if (!canDo('samity_branch_transfer','create')) return;
+    if (!branchTransferForm.samity_id || !branchTransferForm.branch_id || !branchTransferForm.reason.trim()) { setNotice('সমিতি, নতুন Branch ও কারণ লিখুন।'); return; }
+    setPageBusy(true); setNotice('');
+    const { error: rpcError } = await db.rpc('transfer_samity_branch', { p_samity_id:branchTransferForm.samity_id, p_new_branch_id:branchTransferForm.branch_id, p_effective_date:branchTransferForm.effective_date, p_reason:branchTransferForm.reason.trim() });
+    setPageBusy(false);
+    if (rpcError) { setNotice('Branch স্থানান্তর হয়নি: '+rpcError.message); return; }
+    setNotice('সমিতির Branch স্থানান্তর হয়েছে এবং ইতিহাস সংরক্ষিত হয়েছে।');
+    setBranchTransferForm({samity_id:'',branch_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
+    await loadData();
+  }
   async function saveSamityAreaChange(e: FormEvent) {
     e.preventDefault();
     if (!canDo('samity_area_change','create')) return;
