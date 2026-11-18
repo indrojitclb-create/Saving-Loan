@@ -668,29 +668,43 @@ export default function App() {
           {meetingChanges.length===0&&<tr><td colSpan={7} className="empty">এখনও কোনো পরিবর্তনের ইতিহাস নেই।</td></tr>}
         </tbody></table></div>
       </section>}
-      {active === 'samity_area_change' && <section className="workspace">
-        <div className="section-head"><div><h2>সমিতির কর্ম এলাকা পরিবর্তন</h2><p>সমিতির নতুন গ্রাম নির্বাচন করুন। পরিবর্তন কার্যকর হওয়ার তারিখ ও কারণসহ পুরোনো-নতুন এলাকার ইতিহাস সংরক্ষিত হবে।</p></div></div>
-        {canDo('samity_area_change','create') && <form className="employee-form" onSubmit={saveSamityAreaChange}>
+      {active === 'samity_staff' && <section className="workspace">
+        <div className="section-head"><div><h2>সমিতির কর্মী স্থানান্তর</h2><p>সমিতির দায়িত্বপ্রাপ্ত কর্মী পরিবর্তন করুন। পুরোনো ও নতুন দায়িত্বের ইতিহাস সংরক্ষিত থাকবে।</p></div></div>
+        {canDo('samity_staff','create') && <form className="employee-form" onSubmit={saveSamityStaffTransfer}>
           <div className="form-grid">
-            <label>সমিতি নির্বাচন করুন *<select required value={areaChangeForm.samity_id} onChange={e=>chooseAreaChangeSamity(e.target.value)}><option value="">সমিতি নির্বাচন</option>{samities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name} ({x.samity_gender==='male'?'পুরুষ':'মহিলা'})</option>)}</select></label>
-            <label>বর্তমান গ্রাম<input disabled value={areaVillages.find(x=>x.id===samities.find(x=>x.id===areaChangeForm.samity_id)?.village_id)?.name||''}/></label>
-            <label>নতুন বিভাগ *<select required value={areaChangeForm.division_id} onChange={e=>setAreaChangeForm({...areaChangeForm,division_id:e.target.value,district_id:'',upazila_id:'',post_office_id:'',village_id:''})}><option value="">বিভাগ নির্বাচন</option>{areaDivisions.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>নতুন জেলা *<select required value={areaChangeForm.district_id} onChange={e=>setAreaChangeForm({...areaChangeForm,district_id:e.target.value,upazila_id:'',post_office_id:'',village_id:''})}><option value="">জেলা নির্বাচন</option>{areaDistricts.filter(x=>x.is_active&&x.division_id===areaChangeForm.division_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>নতুন উপজেলা *<select required value={areaChangeForm.upazila_id} onChange={e=>setAreaChangeForm({...areaChangeForm,upazila_id:e.target.value,post_office_id:'',village_id:''})}><option value="">উপজেলা নির্বাচন</option>{areaUpazilas.filter(x=>x.is_active&&x.district_id===areaChangeForm.district_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>নতুন পোস্ট অফিস *<select required value={areaChangeForm.post_office_id} onChange={e=>setAreaChangeForm({...areaChangeForm,post_office_id:e.target.value,village_id:''})}><option value="">পোস্ট অফিস নির্বাচন</option>{areaPostOffices.filter(x=>x.is_active&&x.upazila_id===areaChangeForm.upazila_id).map(x=><option key={x.id} value={x.id}>{x.name} — {x.post_code}</option>)}</select></label>
-            <label>নতুন গ্রাম *<select required value={areaChangeForm.village_id} onChange={e=>setAreaChangeForm({...areaChangeForm,village_id:e.target.value})}><option value="">গ্রাম নির্বাচন</option>{areaVillages.filter(x=>x.is_active&&x.post_office_id===areaChangeForm.post_office_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>কার্যকর হওয়ার তারিখ *<input required type="date" value={areaChangeForm.effective_date} onChange={e=>setAreaChangeForm({...areaChangeForm,effective_date:e.target.value})}/></label>
-            <label className="wide">পরিবর্তনের কারণ *<textarea required rows={2} value={areaChangeForm.reason} onChange={e=>setAreaChangeForm({...areaChangeForm,reason:e.target.value})}/></label>
+            <label>সমিতি নির্বাচন করুন *<select required value={staffTransferForm.samity_id} onChange={e=>setStaffTransferForm({...staffTransferForm,samity_id:e.target.value})}><option value="">সমিতি নির্বাচন</option>{samities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
+            <label>বর্তমান দায়িত্বপ্রাপ্ত কর্মী<input disabled value={(()=>{const a=samityStaffAssignments.find(x=>x.samity_id===staffTransferForm.samity_id);const e=employees.find(y=>y.id===a?.employee_id);return e?e.employee_code+' — '+e.full_name:'নির্ধারিত নেই'})()}/></label>
+            <label>নতুন কর্মী নির্বাচন করুন *<select required value={staffTransferForm.employee_id} onChange={e=>setStaffTransferForm({...staffTransferForm,employee_id:e.target.value})}><option value="">কর্মী নির্বাচন</option>{employees.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.employee_code} — {x.full_name}</option>)}</select></label>
+            <label>কার্যকর হওয়ার তারিখ *<input required type="date" value={staffTransferForm.effective_date} onChange={e=>setStaffTransferForm({...staffTransferForm,effective_date:e.target.value})}/></label>
+            <label className="wide">পরিবর্তনের কারণ *<textarea required rows={2} value={staffTransferForm.reason} onChange={e=>setStaffTransferForm({...staffTransferForm,reason:e.target.value})}/></label>
           </div>
-          <div className="form-actions"><button disabled={pageBusy||!areaChangeForm.samity_id||!areaChangeForm.village_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'কর্ম এলাকা পরিবর্তন সংরক্ষণ করুন'}</button></div>
+          <div className="form-actions"><button disabled={pageBusy||!staffTransferForm.samity_id||!staffTransferForm.employee_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'কর্মী স্থানান্তর সংরক্ষণ করুন'}</button></div>
         </form>}
-        <h3>কর্ম এলাকা পরিবর্তনের ইতিহাস</h3>
-        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>ধরন</th><th>আগের গ্রাম</th><th>নতুন গ্রাম</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
-          {areaChanges.map(x=>{const s=samities.find(y=>y.id===x.samity_id);const oldVillage=areaVillages.find(y=>y.id===x.old_village_id);const newVillage=areaVillages.find(y=>y.id===x.new_village_id);return <tr key={x.id}><td>{s?s.samity_code+' — '+s.samity_name:'—'}</td><td>{s?.samity_gender==='male'?'Male (পুরুষ)':s?.samity_gender==='female'?'Female (মহিলা)':'—'}</td><td>{oldVillage?.name||'—'}</td><td>{newVillage?.name||'—'}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
-          {areaChanges.length===0&&<tr><td colSpan={7} className="empty">এখনও কোনো কর্ম এলাকা পরিবর্তনের ইতিহাস নেই।</td></tr>}
+        <h3>কর্মী পরিবর্তনের ইতিহাস</h3>
+        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>কর্মী</th><th>পরিবর্তন</th><th>কার্যকর তারিখ</th><th>কারণ</th></tr></thead><tbody>
+          {samityStaffChanges.map(x=>{const sm=samities.find(y=>y.id===x.samity_id);const em=employees.find(y=>y.id===x.employee_id);return <tr key={x.id}><td>{sm?sm.samity_code+' — '+sm.samity_name:'—'}</td><td>{em?em.employee_code+' — '+em.full_name:'—'}</td><td>{x.change_type==='assigned'?'নিয়োগ':x.change_type==='removed'?'দায়িত্ব থেকে অব্যাহতি':'প্রতিস্থাপন'}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td></tr>})}
+          {samityStaffChanges.length===0&&<tr><td colSpan={5} className="empty">এখনও কোনো কর্মী পরিবর্তনের ইতিহাস নেই।</td></tr>}
         </tbody></table></div>
       </section>}
-      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_area_change' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'samity_branch_transfer' && <section className="workspace">
+        <div className="section-head"><div><h2>সমিতির Branch স্থানান্তর</h2><p>এক Branch থেকে অন্য Branch-এ সমিতি স্থানান্তর করুন। পুরোনো ও নতুন Branch-এর ইতিহাস থাকবে।</p></div></div>
+        {canDo('samity_branch_transfer','create') && <form className="employee-form" onSubmit={saveSamityBranchTransfer}>
+          <div className="form-grid">
+            <label>সমিতি নির্বাচন করুন *<select required value={branchTransferForm.samity_id} onChange={e=>setBranchTransferForm({...branchTransferForm,samity_id:e.target.value})}><option value="">সমিতি নির্বাচন</option>{samities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
+            <label>বর্তমান Branch<input disabled value={(()=>{const sm=samities.find(x=>x.id===branchTransferForm.samity_id);const br=branches.find(x=>x.id===sm?.branch_id);return br?br.branch_code+' — '+br.branch_name:'নির্ধারিত নেই'})()}/></label>
+            <label>নতুন Branch নির্বাচন করুন *<select required value={branchTransferForm.branch_id} onChange={e=>setBranchTransferForm({...branchTransferForm,branch_id:e.target.value})}><option value="">Branch নির্বাচন</option>{branches.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.branch_code} — {x.branch_name}</option>)}</select></label>
+            <label>কার্যকর হওয়ার তারিখ *<input required type="date" value={branchTransferForm.effective_date} onChange={e=>setBranchTransferForm({...branchTransferForm,effective_date:e.target.value})}/></label>
+            <label className="wide">স্থানান্তরের কারণ *<textarea required rows={2} value={branchTransferForm.reason} onChange={e=>setBranchTransferForm({...branchTransferForm,reason:e.target.value})}/></label>
+          </div>
+          <div className="form-actions"><button disabled={pageBusy||!branchTransferForm.samity_id||!branchTransferForm.branch_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'Branch স্থানান্তর সংরক্ষণ করুন'}</button></div>
+        </form>}
+        <h3>Branch স্থানান্তরের ইতিহাস</h3>
+        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>আগের Branch</th><th>নতুন Branch</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
+          {samityBranchChanges.map(x=>{const sm=samities.find(y=>y.id===x.samity_id);const oldB=branches.find(y=>y.id===x.old_branch_id);const newB=branches.find(y=>y.id===x.new_branch_id);return <tr key={x.id}><td>{sm?sm.samity_code+' — '+sm.samity_name:'—'}</td><td>{oldB?oldB.branch_code+' — '+oldB.branch_name:'নির্ধারিত ছিল না'}</td><td>{newB?newB.branch_code+' — '+newB.branch_name:'—'}</td><td>{x.effective_date}</td><td>{x.reason}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
+          {samityBranchChanges.length===0&&<tr><td colSpan={6} className="empty">এখনও কোনো Branch স্থানান্তরের ইতিহাস নেই।</td></tr>}
+        </tbody></table></div>
+      </section>}
+      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
