@@ -1,5 +1,5 @@
 -- Central holiday calendar for organization, branch and samity scopes.
--- Run once in Supabase SQL Editor after the existing core and loan_collection.sql scripts.
+-- Run once in Supabase SQL Editor after schema.sql, security.sql, samity_management.sql, and loan_collection.sql.
 
 create table if not exists public.holiday_calendar_settings (
   id integer primary key default 1 check (id = 1),
@@ -42,7 +42,14 @@ alter table public.holiday_calendar_settings enable row level security;
 drop policy if exists holiday_calendar_read on public.holiday_calendar;
 create policy holiday_calendar_read on public.holiday_calendar
 for select to authenticated using (
-  public.can_manage_module('holiday_calendar','view')
+  (
+    public.can_manage_module('holiday_calendar','view')
+    or public.can_manage_module('collection','view')
+    or public.can_manage_module('collection','create')
+    or public.can_manage_module('loans','view')
+    or public.can_manage_module('loans','create')
+    or public.can_manage_module('loans','update')
+  )
   and (
     scope = 'organization'
     or (scope = 'branch' and public.can_access_branch(branch_id))
