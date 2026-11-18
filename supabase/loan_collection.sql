@@ -127,3 +127,25 @@ with check (
   )
   and public.can_manage_module('loans','update')
 );
+
+-- Permit staff with explicit loan-create permission to register disbursements.
+drop policy if exists loans_insert_scope on public.loan_accounts;
+create policy loans_insert_scope on public.loan_accounts
+for insert to authenticated
+with check (
+  public.can_access_member(member_id)
+  and public.can_manage_module('loans','create')
+  and created_by = (select auth.uid())
+);
+
+drop policy if exists loan_tx_insert_scope on public.loan_transactions;
+create policy loan_tx_insert_scope on public.loan_transactions
+for insert to authenticated
+with check (
+  created_by = (select auth.uid())
+  and public.can_manage_module('loans','create')
+  and exists (
+    select 1 from public.loan_accounts la
+    where la.id = loan_id and public.can_access_member(la.member_id)
+  )
+);
