@@ -127,7 +127,7 @@ begin
               (case when length(v_samity_code) < 3 then lpad(v_samity_code,3,'0') else v_samity_code end);
   perform pg_advisory_xact_lock(hashtextextended(v_prefix,0));
 
-  select coalesce(max(case when right(member_code,4) ~ '^[0-9]{4}$' then right(member_code,4)::integer end),0) + 1
+  select coalesce(max(case when substring(member_code from length(v_prefix)+2) <> '' and substring(member_code from length(v_prefix)+2) !~ '[^0-9]' then substring(member_code from length(v_prefix)+2)::integer end),0) + 1
     into v_next
   from public.members
   where member_code like v_prefix || '-%';
