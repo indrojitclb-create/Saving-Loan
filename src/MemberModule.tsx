@@ -113,7 +113,12 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
       if(Number(form.mandatory_amount)>0)enrollments.push({member_id:data.id,savings_type:'mandatory',amount:Number(form.mandatory_amount),created_by:userData.user?.id});
       if(form.optional_product_id){
         const p=schemes.find(x=>x.id===form.optional_product_id);
-        if(p)enrollments.push({member_id:data.id,savings_type:'optional',product_id:p.id,amount:Number(p.installment_amount),term_months:p.term_months,product_name_snapshot:p.product_name,created_by:userData.user?.id});
+        if(p){
+          const today=new Date().toISOString().slice(0,10);
+          const version=schemeVersions.filter(v=>v.product_id===p.id&&v.is_active&&v.effective_from<=today).sort((a,b)=>b.version_no-a.version_no)[0];
+          if(!version)throw new Error('নির্বাচিত স্কিমের কার্যকর সংস্করণ পাওয়া যায়নি।');
+          enrollments.push({member_id:data.id,savings_type:'optional',product_id:p.id,product_version_id:version.id,version_no_snapshot:version.version_no,interest_rate_snapshot:version.interest_rate,conditions_snapshot:version.conditions,scheme_effective_from_snapshot:version.effective_from,amount:Number(version.installment_amount),term_months:version.term_months,product_name_snapshot:p.product_name,created_by:userData.user?.id});
+        }
       }
       setSelectedMember(data);setTab('register');setStep(4);await refresh();
       if(!editingMemberId&&enrollments.length){const {error:saveError}=await db.from('member_savings_enrollments').insert(enrollments);if(saveError){setNotice('সদস্য নিবন্ধন হয়েছে, কিন্তু সঞ্চয়ের তথ্য সংরক্ষণ হয়নি: '+saveError.message);return;}}
