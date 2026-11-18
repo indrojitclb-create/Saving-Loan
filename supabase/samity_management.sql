@@ -267,3 +267,55 @@ create policy member_samity_transfers_insert on public.member_samity_transfers f
 with check (public.can_manage_module('member_transfer','create') and changed_by = (select auth.uid()));
 
 -- Existing permission editor will show these as separate permission modules after its UI is updated.
+
+
+-- Atomic meeting schedule change: preserve history and update current schedule together.
+create or replace function public.change_samity_meeting(
+  p_samity_id uuid,
+  p_new_day smallint,
+  p_new_time time,
+  p_new_place text,
+  p_effective_date date,
+  p_reason text
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old public.samities%rowtype;
+begin
+  if auth.uid() is null or not public.can_manage_module('samity_day_change','create') then
+    raise exception 'Permission denied';
+  end if;
+  if p_new_day not between 0 and 6 or nullif(trim(p_new_place),'') is null or nullif(trim(p_reason),'') is null then
+    raise exception 'নতুন দিন, সভাস্থল ও পরিবর্তনের কারণ দিতে হবে';
+  end if;
+  select * into v_old from public.samities where id = p_samity_id for update;
+  if not found then raise exception 'Samity not found'; end if;
+
+  insert into public.samity_meeting_changes (
+    samity_id, old_day, new_day, old_time, new_time, old_place, new_place,
+    effective_date, reason, changed_by
+  ) values (
+    v_old.id, v_old.meeting_day, p_new_day, v_old.meeting_time, p_new_time,
+    v_old.meeting_place, trim(p_new_place), coalesce(p_effective_date,current_date),
+    trim(p_reason), auth.uid()
+  );
+
+  update public.samities
+  set meeting_day = p_new_day, meeting_time = p_new_time, meeting_place = trim(p_new_place)
+  where id = p_samity_id;
+end;
+$$;
+grant execute on function public.change_samity_meeting(uuid,smallint,time,text,date,text) to authenticated;
+
+drop policy if exists samities_read on public.samities;
+create policy samities_read on public.samities for select to authenticated
+using (
+  public.can_manage_module('samity','view')
+  or public.can_manage_module('samity','create')
+  or public.can_manage_module('samity','update')
+  or public.can_manage_module('samity_day_change','view')
+  or public.can_manage_module('samity_day_change','create')
+);
