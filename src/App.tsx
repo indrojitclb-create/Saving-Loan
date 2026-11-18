@@ -75,6 +75,8 @@ export default function App() {
   const [areaForm, setAreaForm] = useState<{type: AreaType; id: string; name: string; parentId: string; postCode: string}>({type:'division',id:'',name:'',parentId:'',postCode:''});
   const [samities, setSamities] = useState<any[]>([]);
   const [meetingChanges, setMeetingChanges] = useState<any[]>([]);
+  const [areaChanges, setAreaChanges] = useState<any[]>([]);
+  const [areaChangeForm, setAreaChangeForm] = useState({samity_id:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [meetingForm, setMeetingForm] = useState({samity_id:'',new_day:'2',new_time:'10:00',new_place:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
   const [showSamityForm, setShowSamityForm] = useState(false);
   const [editingSamityId, setEditingSamityId] = useState<string | null>(null);
@@ -116,7 +118,7 @@ export default function App() {
       if (ownPermissions.error) setError('আপনার Permission পড়া যায়নি: ' + ownPermissions.error.message);
       setMyPermissions(ownPermissions.data || []);
     }
-    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult, meetingChangesResult] = await Promise.all([
+    const [employeeResult, branchResult, memberResult, userResult, divisionsResult, districtsResult, upazilasResult, postOfficesResult, villagesResult, samityResult, meetingChangesResult, areaChangesResult] = await Promise.all([
       db.from('employees').select('id,employee_code,full_name,phone,email,branch_id,designation,address,village,post_office,district,division,joining_date,closing_date,mother_name,father_name,spouse_name,is_active,branch:branches(branch_name)').order('employee_code'),
       db.from('branches').select('id,branch_code,branch_name,area_name,is_active').order('branch_code'),
       db.from('members').select('id', { count: 'exact', head: true }),
@@ -128,6 +130,7 @@ export default function App() {
       db.from('area_villages').select('*').order('name'),
       db.from('samities').select('*').order('samity_code'),
       db.from('samity_meeting_changes').select('*').order('created_at', {ascending:false}),
+      db.from('samity_area_changes').select('*').order('created_at', {ascending:false}),
     ]);
     if (employeeResult.error) setError('কর্মী তালিকা পড়া যায়নি: ' + employeeResult.error.message);
     else setEmployees(employeeResult.data || []);
@@ -142,6 +145,7 @@ export default function App() {
     setAreaVillages(villagesResult.data || []);
     setSamities(samityResult.data || []);
     setMeetingChanges(meetingChangesResult.data || []);
+    setAreaChanges(areaChangesResult.data || []);
     if (profileResult.data?.role === 'main_admin' || profileResult.data?.role === 'co_admin') {
       const userList = await db.from('profiles').select('id,full_name,login_id,role,is_active,created_at').order('created_at', { ascending: false });
       if (!userList.error) setUsers(userList.data || []);
@@ -349,6 +353,36 @@ export default function App() {
   function chooseMeetingSamity(id: string) {
     const row = samities.find(x => x.id === id);
     setMeetingForm({...meetingForm,samity_id:id,new_day:String(row?.meeting_day ?? 2),new_time:String(row?.meeting_time || '10:00').slice(0,5),new_place:row?.meeting_place || ''});
+  }
+
+
+  async function saveSamityAreaChange(e: FormEvent) {
+    e.preventDefault();
+    if (!canDo('samity_area_change','create')) return;
+    if (!areaChangeForm.samity_id) { setNotice('সমিতি নির্বাচন করুন।'); return; }
+    if (!areaChangeForm.village_id) { setNotice('নতুন গ্রামের নাম নির্বাচন করুন।'); return; }
+    if (!areaChangeForm.reason.trim()) { setNotice('পরিবর্তনের কারণ লিখুন।'); return; }
+    setPageBusy(true); setNotice('');
+    const { error: rpcError } = await db.rpc('change_samity_area', {
+      p_samity_id: areaChangeForm.samity_id,
+      p_new_village_id: areaChangeForm.village_id,
+      p_effective_date: areaChangeForm.effective_date,
+      p_reason: areaChangeForm.reason.trim()
+    });
+    setPageBusy(false);
+    if (rpcError) { setNotice('কর্ম এলাকা পরিবর্তন হয়নি: ' + rpcError.message); return; }
+    setNotice('সমিতির কর্ম এলাকা পরিবর্তন হয়েছে এবং পুরোনো-নতুন এলাকার ইতিহাস সংরক্ষিত হয়েছে।');
+    setAreaChangeForm({samity_id:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',effective_date:new Date().toISOString().slice(0,10),reason:''});
+    await loadData();
+  }
+
+  function chooseAreaChangeSamity(id: string) {
+    const row = samities.find(x=>x.id===id);
+    const village = areaVillages.find(x=>x.id===row?.village_id);
+    const post = areaPostOffices.find(x=>x.id===village?.post_office_id);
+    const upazila = areaUpazilas.find(x=>x.id===post?.upazila_id);
+    const district = areaDistricts.find(x=>x.id===upazila?.district_id);
+    setAreaChangeForm({...areaChangeForm,samity_id:id,division_id:district?.division_id||'',district_id:district?.id||'',upazila_id:upazila?.id||'',post_office_id:post?.id||'',village_id:''});
   }
 
   async function createUser(e: FormEvent) {
@@ -598,7 +632,29 @@ export default function App() {
           {meetingChanges.length===0&&<tr><td colSpan={7} className="empty">এখনও কোনো পরিবর্তনের ইতিহাস নেই।</td></tr>}
         </tbody></table></div>
       </section>}
-      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'samity_area_change' && <section className="workspace">
+        <div className="section-head"><div><h2>সমিতির কর্ম এলাকা পরিবর্তন</h2><p>সমিতির নতুন গ্রাম নির্বাচন করুন। পরিবর্তন কার্যকর হওয়ার তারিখ ও কারণসহ পুরোনো-নতুন এলাকার ইতিহাস সংরক্ষিত হবে।</p></div></div>
+        {canDo('samity_area_change','create') && <form className="employee-form" onSubmit={saveSamityAreaChange}>
+          <div className="form-grid">
+            <label>সমিতি নির্বাচন করুন *<select required value={areaChangeForm.samity_id} onChange={e=>chooseAreaChangeSamity(e.target.value)}><option value="">সমিতি নির্বাচন</option>{samities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name} ({x.samity_gender==='male'?'পুরুষ':'মহিলা'})</option>)}</select></label>
+            <label>বর্তমান গ্রাম<input disabled value={areaVillages.find(x=>x.id===samities.find(x=>x.id===areaChangeForm.samity_id)?.village_id)?.name||''}/></label>
+            <label>নতুন বিভাগ *<select required value={areaChangeForm.division_id} onChange={e=>setAreaChangeForm({...areaChangeForm,division_id:e.target.value,district_id:'',upazila_id:'',post_office_id:'',village_id:''})}><option value="">বিভাগ নির্বাচন</option>{areaDivisions.filter(x=>x.is_active).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <label>নতুন জেলা *<select required value={areaChangeForm.district_id} onChange={e=>setAreaChangeForm({...areaChangeForm,district_id:e.target.value,upazila_id:'',post_office_id:'',village_id:''})}><option value="">জেলা নির্বাচন</option>{areaDistricts.filter(x=>x.is_active&&x.division_id===areaChangeForm.division_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <label>নতুন উপজেলা *<select required value={areaChangeForm.upazila_id} onChange={e=>setAreaChangeForm({...areaChangeForm,upazila_id:e.target.value,post_office_id:'',village_id:''})}><option value="">উপজেলা নির্বাচন</option>{areaUpazilas.filter(x=>x.is_active&&x.district_id===areaChangeForm.district_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <label>নতুন পোস্ট অফিস *<select required value={areaChangeForm.post_office_id} onChange={e=>setAreaChangeForm({...areaChangeForm,post_office_id:e.target.value,village_id:''})}><option value="">পোস্ট অফিস নির্বাচন</option>{areaPostOffices.filter(x=>x.is_active&&x.upazila_id===areaChangeForm.upazila_id).map(x=><option key={x.id} value={x.id}>{x.name} — {x.post_code}</option>)}</select></label>
+            <label>নতুন গ্রাম *<select required value={areaChangeForm.village_id} onChange={e=>setAreaChangeForm({...areaChangeForm,village_id:e.target.value})}><option value="">গ্রাম নির্বাচন</option>{areaVillages.filter(x=>x.is_active&&x.post_office_id===areaChangeForm.post_office_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <label>কার্যকর হওয়ার তারিখ *<input required type="date" value={areaChangeForm.effective_date} onChange={e=>setAreaChangeForm({...areaChangeForm,effective_date:e.target.value})}/></label>
+            <label className="wide">পরিবর্তনের কারণ *<textarea required rows={2} value={areaChangeForm.reason} onChange={e=>setAreaChangeForm({...areaChangeForm,reason:e.target.value})}/></label>
+          </div>
+          <div className="form-actions"><button disabled={pageBusy||!areaChangeForm.samity_id||!areaChangeForm.village_id}>{pageBusy?'সংরক্ষণ হচ্ছে...':'কর্ম এলাকা পরিবর্তন সংরক্ষণ করুন'}</button></div>
+        </form>}
+        <h3>কর্ম এলাকা পরিবর্তনের ইতিহাস</h3>
+        <div className="table-wrap"><table><thead><tr><th>সমিতি</th><th>ধরন</th><th>আগের গ্রাম</th><th>নতুন গ্রাম</th><th>কার্যকর তারিখ</th><th>কারণ</th><th>রেকর্ডের তারিখ</th></tr></thead><tbody>
+          {areaChanges.map(x=>{const s=samities.find(y=>y.id===x.samity_id);const oldVillage=areaVillages.find(y=>y.id===x.old_village_id);const newVillage=areaVillages.find(y=>y.id===x.new_village_id);return <tr key={x.id}><td>{s?s.samity_code+' — '+s.samity_name:'—'}</td><td>{s?.samity_gender==='male'?'Male (পুরুষ)':s?.samity_gender==='female'?'Female (মহিলা)':'—'}</td><td>{oldVillage?.name||'—'}</td><td>{newVillage?.name||'—'}</td><td>{x.effective_date}</td><td>{x.reason||'—'}</td><td>{String(x.created_at||'').slice(0,10)}</td></tr>})}
+          {areaChanges.length===0&&<tr><td colSpan={7} className="empty">এখনও কোনো কর্ম এলাকা পরিবর্তনের ইতিহাস নেই।</td></tr>}
+        </tbody></table></div>
+      </section>}
+      {active !== 'dashboard' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_area_change' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
