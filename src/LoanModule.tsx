@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 import { buildInstallmentDates, calculateLoanSchedule } from './lib/loanCalculation';
 
@@ -45,7 +46,7 @@ export default function LoanModule({ samities, canDo }: Props) {
   }
   useEffect(() => { load(); }, []);
 
-  async function createLoan(e: React.FormEvent) {
+  async function createLoan(e: FormEvent) {
     e.preventDefault();
     if (!supabase || !canDo('loans','create')) return;
     setNotice('');
