@@ -121,13 +121,90 @@ begin
     raise exception 'নির্বাচিত সমিতি বা Branch সক্রিয় নয়';
   end if;
 
-  v_prefix := lpad(v_branch_code,3,'0') || '-' || lpad(v_samity_code,3,'0');
+  v_prefix := (case when length(v_branch_code)<3 then lpad(v_branch_code,3,'0') else v_branch_code end) || '-' || (case when length(v_samity_code)<3 then lpad(v_samity_code,3,'0') else v_samity_code end);
   perform pg_advisory_xact_lock(hashtextextended(v_prefix,0));
 
   select coalesce(max(nullif(regexp_replace(member_code, '^.*-', ''), '')::integer),0)+1
     into v_next
   from public.members
-  where member_code like v_prefix || '-%';
+  where member_code ~ ('^' || v_prefix || '-[0-9]+
+
+  new.member_code := v_prefix || '-' || lpad(v_next::text,4,'0');
+  return new;
+end;
+$$;
+
+drop trigger if exists members_assign_code_before_insert on public.members;
+create trigger members_assign_code_before_insert
+before insert on public.members
+for each row execute function public.assign_member_code();
+
+-- RLS policies use the existing module permission helper.
+alter table public.optional_savings_products enable row level security;
+alter table public.member_savings_enrollments enable row level security;
+alter table public.member_documents enable row level security;
+
+drop policy if exists members_read_permission on public.members;
+create policy members_read_permission on public.members for select to authenticated
+using (public.can_access_branch(branch_id) and (public.can_manage_module('members','view') or public.can_manage_module('members','create') or public.can_manage_module('members','update')));
+drop policy if exists members_insert_permission on public.members;
+create policy members_insert_permission on public.members for insert to authenticated
+with check (public.can_access_branch(branch_id) and public.can_manage_module('members','create') and created_by=(select auth.uid()));
+drop policy if exists members_update_permission on public.members;
+create policy members_update_permission on public.members for update to authenticated
+using (public.can_access_branch(branch_id) and public.can_manage_module('members','update')) with check (public.can_access_branch(branch_id) and public.can_manage_module('members','update'));
+
+drop policy if exists optional_savings_products_read on public.optional_savings_products;
+create policy optional_savings_products_read on public.optional_savings_products for select to authenticated
+using (public.can_manage_module('optional_savings','view') or public.can_manage_module('optional_savings','create') or public.can_manage_module('members','view') or public.can_manage_module('members','create'));
+drop policy if exists optional_savings_products_manage on public.optional_savings_products;
+create policy optional_savings_products_manage on public.optional_savings_products for all to authenticated
+using (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'))
+with check (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'));
+
+drop policy if exists member_savings_read on public.member_savings_enrollments;
+create policy member_savings_read on public.member_savings_enrollments for select to authenticated
+using (public.can_access_member(member_id) and (public.can_manage_module('members','view') or public.can_manage_module('members','create') or public.can_manage_module('savings','view')));
+drop policy if exists member_savings_insert on public.member_savings_enrollments;
+create policy member_savings_insert on public.member_savings_enrollments for insert to authenticated
+with check (public.can_access_member(member_id) and (public.can_manage_module('members','create') or public.can_manage_module('savings','create')) and created_by=(select auth.uid()));
+
+drop policy if exists member_documents_read on public.member_documents;
+create policy member_documents_read on public.member_documents for select to authenticated
+using (public.can_access_member(member_id) and (public.can_manage_module('members','view') or public.can_manage_module('members','create') or public.can_manage_module('members','update')));
+drop policy if exists member_documents_insert on public.member_documents;
+create policy member_documents_insert on public.member_documents for insert to authenticated
+with check (public.can_access_member(member_id) and public.can_manage_module('members','create') and uploaded_by=(select auth.uid()));
+drop policy if exists member_documents_delete on public.member_documents;
+create policy member_documents_delete on public.member_documents for delete to authenticated
+using (public.can_access_member(member_id) and public.can_manage_module('members','delete'));
+
+-- Private bucket for member files. Files are not publicly readable.
+insert into storage.buckets(id,name,public,file_size_limit,allowed_mime_types)
+values ('member-documents','member-documents',false,10485760,array['image/jpeg','image/png','image/webp','application/pdf'])
+on conflict (id) do nothing;
+
+drop policy if exists member_documents_storage_read on storage.objects;
+create policy member_documents_storage_read on storage.objects for select to authenticated
+using (bucket_id='member-documents' and exists (select 1 from public.members m where m.id::text=split_part(name,'/',1) and public.can_access_member(m.id) and (public.can_manage_module('members','view') or public.can_manage_module('members','create') or public.can_manage_module('members','update'))));
+drop policy if exists member_documents_storage_insert on storage.objects;
+create policy member_documents_storage_insert on storage.objects for insert to authenticated
+with check (bucket_id='member-documents' and exists (select 1 from public.members m where m.id::text=split_part(name,'/',1) and public.can_access_member(m.id)) and public.can_manage_module('members','create'));
+drop policy if exists member_documents_storage_delete on storage.objects;
+create policy member_documents_storage_delete on storage.objects for delete to authenticated
+using (bucket_id='member-documents' and exists (select 1 from public.members m where m.id::text=split_part(name,'/',1) and public.can_access_member(m.id)) and public.can_manage_module('members','delete'));
+
+
+-- Allow member-registration staff to select Samities within branches they can access.
+drop policy if exists samities_read on public.samities;
+create policy samities_read on public.samities for select to authenticated
+using (
+  (public.can_manage_module('samity','view') or public.can_manage_module('samity','create') or public.can_manage_module('samity','update'))
+  or (public.can_manage_module('members','view') or public.can_manage_module('members','create')) and public.can_access_branch(branch_id)
+);
+
+-- Extend permission editor's available module keys.
+);
 
   new.member_code := v_prefix || '-' || lpad(v_next::text,4,'0');
   return new;
