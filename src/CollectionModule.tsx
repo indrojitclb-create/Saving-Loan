@@ -48,7 +48,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       const ids=(mr.data||[]).map(x=>x.id);
       if(!ids.length){if(!cancelled){setMembers([]);setSavings([]);setLoans([]);setLoanTx([]);setLoading(false);}return;}
       const [sr,lr,cr]=await Promise.all([
-        supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category').in('member_id',ids).lt('transaction_date',end).order('transaction_date'),
+        supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category').in('member_id',ids).lte('transaction_date',end).order('transaction_date'),
         supabase.from('loan_accounts').select('id,loan_no,member_id,principal,total_repayable,total_service_charge,disbursement_date,status').in('member_id',ids).order('disbursement_date'),
         supabase.from('samity_week_closures').select('closure_date').eq('samity_id',samityId).gte('closure_date',start).lte('closure_date',end)
       ]);
