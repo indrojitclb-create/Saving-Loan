@@ -108,7 +108,7 @@ drop policy if exists scheme_rules_insert on storage.objects;
 create policy scheme_rules_insert on storage.objects for insert to authenticated
 with check (
   bucket_id = 'scheme-rules'
-  and public.can_manage_module('optional_savings','create')
+  and (public.can_manage_module('optional_savings','create') or public.can_manage_module('optional_savings','update'))
 );
 
 drop policy if exists scheme_rules_delete on storage.objects;
