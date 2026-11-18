@@ -11,6 +11,7 @@ type Props = {
   postOffices: any[];
   villages: any[];
   role: string;
+  initialTab?: 'list'|'schemes';
   canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean;
 };
 const emptyForm: any = {
@@ -32,7 +33,7 @@ const documentTypes = [
   ['admission_form','Admission Form'],['loan_proposal','Loan Proposal'],['contact','Contact'],
   ['kyc','KYC'],['trade_license','Trade License']
 ];
-export default function MemberModule({branches,samities,divisions,districts,upazilas,postOffices,villages,role,canDo}:Props) {
+export default function MemberModule({branches,samities,divisions,districts,upazilas,postOffices,villages,role,initialTab='list',canDo}:Props) {
   const [tab,setTab]=useState<'list'|'register'|'schemes'>('list');
   const [step,setStep]=useState(0);
   const [form,setForm]=useState<any>(emptyForm);
@@ -69,6 +70,7 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
     if(s.error)setNotice('সঞ্চয় স্কিম পড়া যায়নি: '+s.error.message);else setSchemes(s.data||[]);
   }
   useEffect(()=>{refresh();},[]);
+  useEffect(()=>{setTab(initialTab);},[initialTab]);
   async function loadDocs(member:any){
     setSelectedMember(member);
     const {data,error}=await db.from('member_documents').select('*').eq('member_id',member.id).order('created_at',{ascending:false});
