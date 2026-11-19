@@ -62,7 +62,15 @@ begin
       if v_previous_date is not null and v_candidate <= v_previous_date then
         v_candidate := v_previous_date + 7;
       end if;
-      while public.is_holiday_for_samity(p_samity_id, v_candidate) loop
+      while public.is_holiday_for_samity(p_samity_id, v_candidate)
+         or exists (
+           select 1 from public.loan_installment_schedule paid_row
+           where paid_row.loan_id = v_loan.id
+             and paid_row.due_date = v_candidate
+             and (paid_row.status = 'paid'
+               or coalesce(paid_row.principal_paid,0) + coalesce(paid_row.service_charge_paid,0)
+                    >= coalesce(paid_row.total_due,0) - 0.005)
+         ) loop
         v_candidate := v_candidate + 7;
       end loop;
 
@@ -130,7 +138,7 @@ begin
   end if;
   if not exists (select 1 from pg_constraint where conname='samity_meeting_changes_no_friday' and conrelid='public.samity_meeting_changes'::regclass) then
     alter table public.samity_meeting_changes add constraint samity_meeting_changes_no_friday
-      check (old_day <> 5 and new_day <> 5) not valid;
+      check (new_day <> 5) not valid;
   end if;
 end $$;
 
@@ -159,10 +167,6 @@ begin
   end if;
   select * into v_old from public.samities where id = p_samity_id for update;
   if not found then raise exception 'Samity not found'; end if;
-  if v_old.meeting_day = 5 then
-    raise exception 'এই সমিতির বর্তমান সভার দিন শুক্রবার। আগে Main Admin-এর মাধ্যমে বৈধ সভার দিন নির্ধারণ করুন।';
-  end if;
-
   insert into public.samity_meeting_changes (
     samity_id, old_day, new_day, old_time, new_time, old_place, new_place,
     effective_date, reason, changed_by
