@@ -12,6 +12,10 @@ declare
   v_row record;
   v_candidate date;
   v_previous_date date := null;
+  v_ids uuid[] := array[]::uuid[];
+  v_dates date[] := array[]::date[];
+  v_i integer;
+  v_count integer;
 begin
   select m.samity_id into v_samity_id
   from public.loan_accounts a
@@ -20,44 +24,49 @@ begin
 
   if v_samity_id is null then return; end if;
 
+  -- Calculate the complete target sequence first. This preserves weekly order
+  -- and reserves paid/historical dates before any unique due_date is updated.
   for v_row in
     select id, due_date, status
     from public.loan_installment_schedule
     where loan_id = p_loan_id
     order by week_no
-    for update
   loop
-    -- Paid installments and historical unpaid installments are immutable.
-    if v_row.status = 'paid' or v_row.due_date < current_date then
-      v_previous_date := v_row.due_date;
-      continue;
-    end if;
-
     v_candidate := v_row.due_date;
-    if v_previous_date is not null and v_candidate <= v_previous_date then
-      v_candidate := v_previous_date + 7;
+
+    if v_row.status <> 'paid' and v_row.due_date >= current_date then
+      loop
+        exit when not public.is_holiday_for_samity(v_samity_id, v_candidate)
+          and (v_previous_date is null or v_candidate > v_previous_date)
+          and not (v_candidate = any(v_dates))
+          and not exists (
+            select 1
+            from public.loan_installment_schedule fixed
+            where fixed.loan_id = p_loan_id
+              and fixed.id <> v_row.id
+              and (fixed.status = 'paid' or fixed.due_date < current_date)
+              and fixed.due_date = v_candidate
+          );
+        v_candidate := v_candidate + 7;
+      end loop;
     end if;
 
-    -- Move only by whole weeks: the samity meeting weekday never changes.
-    while public.is_holiday_for_samity(v_samity_id, v_candidate)
-       or exists (
-         select 1
-         from public.loan_installment_schedule occupied
-         where occupied.loan_id = p_loan_id
-           and occupied.id <> v_row.id
-           and occupied.due_date = v_candidate
-       )
-    loop
-      v_candidate := v_candidate + 7;
-    end loop;
-
-    if v_candidate <> v_row.due_date then
-      update public.loan_installment_schedule
-      set due_date = v_candidate
-      where id = v_row.id;
-    end if;
+    v_ids := array_append(v_ids, v_row.id);
+    v_dates := array_append(v_dates, v_candidate);
     v_previous_date := v_candidate;
   end loop;
+
+  -- Update from the last installment backwards so the unique (loan_id,due_date)
+  -- constraint never blocks an earlier installment taking a freed date.
+  v_count := coalesce(array_length(v_ids, 1), 0);
+  if v_count > 0 then
+    for v_i in reverse v_count..1 loop
+      update public.loan_installment_schedule
+      set due_date = v_dates[v_i]
+      where id = v_ids[v_i]
+        and due_date is distinct from v_dates[v_i];
+    end loop;
+  end if;
 
   update public.loan_accounts a
   set first_installment_date = (
