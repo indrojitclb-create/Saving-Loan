@@ -101,7 +101,7 @@ begin
   loop
     perform public.reschedule_unpaid_installments_for_samity(v_samity.samity_id);
   end loop;
-  return coalesce(new, old);
+  return null;
 end;
 $$;
 
