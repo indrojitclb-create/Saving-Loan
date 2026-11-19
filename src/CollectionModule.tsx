@@ -89,7 +89,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     const gsOpen=memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const ltsOpen=memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const gsBy=displayDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='GS'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
-    const ltsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
+    const ltsBy=displayDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const loanOpen=memberLoans.reduce((s,l)=>s+Number(l.total_repayable??(Number(l.principal)+Number(l.total_service_charge||0))),0)-loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date<month+'-01').reduce((s,x)=>s+Number(x.amount),0);
     const loanBy=displayDates.map(d=>loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date===d).reduce((s,x)=>s+Number(x.amount),0));
     const gsTotal=gsBy.reduce((a,b)=>a+b,0),ltsTotal=ltsBy.reduce((a,b)=>a+b,0),loanTotal=loanBy.reduce((a,b)=>a+b,0);
