@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
-import { buildInstallmentDates, calculateLoanSchedule } from './lib/loanCalculation';
+import { buildInstallmentDates, calculateFirstInstallmentDate, calculateLoanSchedule } from './lib/loanCalculation';
 
 type Props = { samities: any[]; canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean };
 const money = (value: number) => '৳' + Math.round(value).toLocaleString('en-BD', { maximumFractionDigits: 0 });
@@ -16,6 +16,7 @@ export default function LoanModule({ samities, canDo }: Props) {
   const [principal, setPrincipal] = useState('10000');
   const [disbursementDate, setDisbursementDate] = useState(new Date().toISOString().slice(0,10));
   const [firstDate, setFirstDate] = useState('');
+  const [firstDateMode, setFirstDateMode] = useState<'auto'|'manual'>('auto');
   const [closures, setClosures] = useState<any[]>([]);
   const [holidayRows, setHolidayRows] = useState<any[]>([]);
   const [fridayEnabled, setFridayEnabled] = useState(true);
@@ -30,6 +31,36 @@ export default function LoanModule({ samities, canDo }: Props) {
     try { return calculateLoanSchedule(amount); } catch { return []; }
   }, [amount]);
   const previewTotal = preview.reduce((sum, row) => sum + row.totalDue, 0);
+  const selectedClosedDates = useMemo(() => {
+    if (!selectedSamity) return [];
+    const dates = closures.filter(x => x.samity_id === selectedSamity.id).map(x => x.closure_date);
+    const relevant = holidayRows.filter(h => h.is_active && (
+      h.scope === 'organization' ||
+      (h.scope === 'branch' && h.branch_id === selectedSamity.branch_id) ||
+      (h.scope === 'samity' && h.samity_id === selectedSamity.id)
+    ));
+    for (const h of relevant) {
+      const d = new Date(h.date_from + 'T12:00:00');
+      const end = new Date(h.date_to + 'T12:00:00');
+      while (d <= end) {
+        dates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
+        d.setDate(d.getDate()+1);
+      }
+    }
+    if (fridayEnabled) {
+      const start = new Date(disbursementDate + 'T12:00:00');
+      const end = new Date(start); end.setDate(end.getDate()+14+46*7+7);
+      for (const d = new Date(start); d <= end; d.setDate(d.getDate()+1)) if (d.getDay()===5) dates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
+    }
+    return [...new Set(dates)];
+  }, [selectedSamity, closures, holidayRows, fridayEnabled, disbursementDate]);
+
+  useEffect(() => {
+    if (!selectedSamity || !disbursementDate || firstDateMode !== 'auto') { if (!selectedSamity) setFirstDate(''); return; }
+    try { setFirstDate(calculateFirstInstallmentDate(disbursementDate, Number(selectedSamity.meeting_day), selectedClosedDates)); }
+    catch { setFirstDate(''); }
+  }, [selectedSamity, disbursementDate, selectedClosedDates, firstDateMode]);
+
 
   async function load() {
     if (!supabase) return;
@@ -60,28 +91,11 @@ export default function LoanModule({ samities, canDo }: Props) {
     if (!loanNo.trim()) { setNotice('ঋণ নম্বর লিখুন।'); return; }
     if (!preview.length) { setNotice('ঋণের পরিমাণ ১,০০০–২,০০,০০০ টাকার মধ্যে ১,০০০ টাকার গুণিতক হতে হবে।'); return; }
     if (!firstDate) { setNotice('প্রথম কিস্তির তারিখ নির্বাচন করুন।'); return; }
-    if (fridayEnabled && new Date(firstDate+'T12:00:00').getDay()===5) { setNotice('শুক্রবার স্বয়ংক্রিয় ছুটি। প্রথম কিস্তির জন্য অন্য তারিখ নির্বাচন করুন।'); return; }
-    const relevantHolidays = holidayRows.filter(h =>
-      h.scope === 'organization' ||
-      (h.scope === 'branch' && h.branch_id === selectedSamity.branch_id) ||
-      (h.scope === 'samity' && h.samity_id === selectedSamity.id)
-    );
-    const closedDates = closures.filter(x => x.samity_id === selectedSamity.id).map(x => x.closure_date);
-    for (const h of relevantHolidays) {
-      const d = new Date(h.date_from + 'T12:00:00');
-      const end = new Date(h.date_to + 'T12:00:00');
-      while (d <= end) {
-        closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
-        d.setDate(d.getDate()+1);
-      }
-    }
-    if (fridayEnabled && Number(selectedSamity.meeting_day) === 5) {
-      const d = new Date(firstDate + 'T12:00:00');
-      for (let i=0;i<400;i++) {
-        if (d.getDay()===5) closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
-        d.setDate(d.getDate()+7);
-      }
-    }
+    if (Number(selectedSamity.meeting_day) === 5) { setNotice('শুক্রবার কোনো সমিতির সভার দিন হতে পারবে না। সমিতির সভার দিন সংশোধন করুন।'); return; }
+    const disb = new Date(disbursementDate + 'T12:00:00'); disb.setDate(disb.getDate()+14);
+    if (new Date(firstDate + 'T12:00:00') < disb) { setNotice('প্রথম কিস্তি ঋণ বিতরণের কমপক্ষে ১৪ দিন পরে হতে হবে।'); return; }
+    if (selectedClosedDates.includes(firstDate)) { setNotice('নির্বাচিত প্রথম কিস্তির দিনটি বন্ধ। একই বার পরবর্তী সপ্তাহ নির্বাচন করুন।'); return; }
+    const closedDates = selectedClosedDates;
     let dates: string[];
     try { dates = buildInstallmentDates(firstDate, Number(selectedSamity.meeting_day), closedDates); }
     catch (error) { setNotice(error instanceof Error ? error.message : 'কিস্তির তারিখ সঠিক নয়।'); return; }
@@ -160,7 +174,8 @@ export default function LoanModule({ samities, canDo }: Props) {
         <label>ঋণ নম্বর *<input required value={loanNo} onChange={e=>setLoanNo(e.target.value)} placeholder="যেমন LN-0001"/></label>
         <label>ঋণের পরিমাণ (৳) *<input required type="number" min="1000" max="200000" step="1000" value={principal} onChange={e=>setPrincipal(e.target.value)}/></label>
         <label>ঋণ বিতরণের তারিখ *<input required type="date" value={disbursementDate} onChange={e=>setDisbursementDate(e.target.value)}/></label>
-        <label>প্রথম কিস্তির তারিখ *<input required type="date" value={firstDate} onChange={e=>setFirstDate(e.target.value)}/></label>
+        <label>প্রথম কিস্তির তারিখের পদ্ধতি *<select value={firstDateMode} onChange={e=>setFirstDateMode(e.target.value as 'auto'|'manual')}><option value="auto">স্বয়ংক্রিয় (বিতরণের ১৪ দিন পর)</option><option value="manual">ম্যানুয়ালি নির্বাচন</option></select></label>
+        <label>প্রথম কিস্তির তারিখ *<input required type="date" value={firstDate} readOnly={firstDateMode==='auto'} onChange={e=>setFirstDate(e.target.value)}/></label>
       </div>
       {preview.length>0 && <div className="panel">
         <h3>ঋণের হিসাবের প্রিভিউ</h3>
