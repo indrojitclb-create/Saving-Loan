@@ -58,8 +58,15 @@ begin
     end if;
     v_previous_date := v_candidate;
   end loop;
+
+  update public.loan_accounts a
+  set first_installment_date = (
+    select s.due_date from public.loan_installment_schedule s
+    where s.loan_id = p_loan_id and s.week_no = 1
+  )
+  where a.id = p_loan_id;
 end;
-$$;
+$;
 
 create or replace function public.reschedule_all_active_loan_installments()
 returns void
@@ -86,7 +93,7 @@ set search_path = public
 as $$
 begin
   perform public.reschedule_all_active_loan_installments();
-  return coalesce(new, old);
+  return null;
 end;
 $$;
 
@@ -136,3 +143,9 @@ begin
 end;
 $$;
 
+
+-- These maintenance functions are intended to run only from database triggers.
+revoke all on function public.reschedule_unpaid_loan_installments(uuid) from public, anon, authenticated;
+revoke all on function public.reschedule_all_active_loan_installments() from public, anon, authenticated;
+revoke all on function public.trigger_reschedule_after_holiday_change() from public, anon, authenticated;
+revoke all on function public.prevent_friday_samity_meeting() from public, anon, authenticated;
