@@ -29,14 +29,16 @@ begin
   -- Calculate the complete target sequence first. This preserves weekly order
   -- and reserves paid/historical dates before any unique due_date is updated.
   for v_row in
-    select id, due_date, status
+    select id, due_date, status, total_due, principal_paid, service_charge_paid
     from public.loan_installment_schedule
     where loan_id = p_loan_id
     order by week_no
   loop
     v_candidate := v_row.due_date;
 
-    if v_row.status <> 'paid' and v_row.due_date >= current_date then
+    if v_row.status <> 'paid'
+       and coalesce(v_row.principal_paid,0) + coalesce(v_row.service_charge_paid,0) < coalesce(v_row.total_due,0) - 0.005
+       and v_row.due_date >= current_date then
       loop
         exit when not public.is_holiday_for_samity(v_samity_id, v_candidate)
           and (v_previous_date is null or v_candidate > v_previous_date)
@@ -46,7 +48,9 @@ begin
             from public.loan_installment_schedule fixed
             where fixed.loan_id = p_loan_id
               and fixed.id <> v_row.id
-              and (fixed.status = 'paid' or fixed.due_date < current_date)
+              and (fixed.status = 'paid'
+                or coalesce(fixed.principal_paid,0) + coalesce(fixed.service_charge_paid,0) >= coalesce(fixed.total_due,0) - 0.005
+                or fixed.due_date < current_date)
               and fixed.due_date = v_candidate
           );
         v_candidate := v_candidate + 7;
