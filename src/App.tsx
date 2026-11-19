@@ -335,6 +335,7 @@ export default function App() {
     e.preventDefault();
     if (!canDo('samity', editingSamityId ? 'update' : 'create')) return;
     if (!samityForm.village_id) { setNotice('সমিতির গ্রাম নির্বাচন করুন।'); return; }
+    if (Number(samityForm.meeting_day) === 5) { setNotice('শুক্রবার সমিতির সভার দিন হতে পারবে না।'); return; }
     setPageBusy(true); setNotice('');
     const payload = {samity_code:samityForm.samity_code.trim(),samity_name:samityForm.samity_name.trim(),samity_gender:samityForm.samity_gender,branch_id:samityForm.branch_id || null,village_id:samityForm.village_id,meeting_place:samityForm.meeting_place.trim(),meeting_day:Number(samityForm.meeting_day),meeting_time:samityForm.meeting_time,start_date:samityForm.start_date || null,status:samityForm.status,notes:samityForm.notes.trim() || null};
     const result = editingSamityId
@@ -353,6 +354,7 @@ export default function App() {
     const current = samities.find(x => x.id === meetingForm.samity_id);
     if (!current) { setNotice('সমিতি নির্বাচন করুন।'); return; }
     if (!meetingForm.reason.trim()) { setNotice('পরিবর্তনের কারণ লিখুন।'); return; }
+    if (Number(meetingForm.new_day) === 5) { setNotice('শুক্রবার সমিতির সভার দিন হতে পারবে না।'); return; }
     setPageBusy(true); setNotice('');
     const { error: rpcError } = await db.rpc('change_samity_meeting', {
       p_samity_id: meetingForm.samity_id,
@@ -643,7 +645,7 @@ export default function App() {
             <label>পোস্ট অফিস *<select required value={samityForm.post_office_id} onChange={e=>setSamityForm({...samityForm,post_office_id:e.target.value,village_id:''})}><option value="">পোস্ট অফিস নির্বাচন</option>{areaPostOffices.filter(x=>x.is_active&&x.upazila_id===samityForm.upazila_id).map(x=><option key={x.id} value={x.id}>{x.name} ({x.post_code})</option>)}</select></label>
             <label>গ্রাম *<select required value={samityForm.village_id} onChange={e=>setSamityForm({...samityForm,village_id:e.target.value})}><option value="">গ্রাম নির্বাচন</option>{areaVillages.filter(x=>x.is_active&&x.post_office_id===samityForm.post_office_id).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
             <label>সমিতির সভার স্থান *<input required value={samityForm.meeting_place} onChange={e=>setSamityForm({...samityForm,meeting_place:e.target.value})} placeholder="যেমন: সদস্যের বাড়ির উঠান"/></label>
-            <label>সাপ্তাহিক সভার দিন *<select required value={samityForm.meeting_day} onChange={e=>setSamityForm({...samityForm,meeting_day:e.target.value})}><option value="0">রবিবার</option><option value="1">সোমবার</option><option value="2">মঙ্গলবার</option><option value="3">বুধবার</option><option value="4">বৃহস্পতিবার</option><option value="5">শুক্রবার</option><option value="6">শনিবার</option></select></label>
+            <label>সাপ্তাহিক সভার দিন *<select required value={samityForm.meeting_day} onChange={e=>setSamityForm({...samityForm,meeting_day:e.target.value})}><option value="0">রবিবার</option><option value="1">সোমবার</option><option value="2">মঙ্গলবার</option><option value="3">বুধবার</option><option value="4">বৃহস্পতিবার</option><option value="5" disabled>শুক্রবার (বন্ধ)</option><option value="6">শনিবার</option></select></label>
             <label>সভার সময় *<input required type="time" value={samityForm.meeting_time} onChange={e=>setSamityForm({...samityForm,meeting_time:e.target.value})}/></label>
             <label>গঠনের তারিখ<input type="date" value={samityForm.start_date} onChange={e=>setSamityForm({...samityForm,start_date:e.target.value})}/></label>
             <label>অবস্থা<select value={samityForm.status} onChange={e=>setSamityForm({...samityForm,status:e.target.value})}><option value="active">সক্রিয়</option><option value="inactive">নিষ্ক্রিয়</option><option value="closed">বন্ধ</option></select></label>
