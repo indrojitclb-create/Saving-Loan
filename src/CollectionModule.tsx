@@ -118,7 +118,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     </thead><tbody>{rows.map((r,i)=><tr key={r.id}><td>{i+1}</td><td>{r.member_code}</td><td>{r.full_name}</td><td>{money(r.gsOpen)}</td><td>{money(r.ltsOpen)}</td><td>{money(r.loanOpen)} </td>
       {meetingDates.flatMap((d,j)=>[<td key={d+'g'}>{money(r.gsBy[j])}</td>,<td key={d+'l'}>{money(r.ltsBy[j])}</td>,<td key={d+'due'}>{money(r.loanDueBy[j])}</td>,<td key={d+'loan'}>{money(r.loanBy[j])}</td>])}
       <td>{money(r.gsTotal)}</td><td>{money(r.ltsTotal)}</td><td>{money(r.loanDueTotal)}</td><td>{money(r.loanTotal)}</td><td>{money(r.gsClose)}</td><td>{money(r.ltsClose)}</td><td>{money(r.loanClose)}</td></tr>)}
-      {!rows.length&&<tr><td colSpan={16+meetingDates.length*4} className="empty">এই সমিতিতে সক্রিয় সদস্য নেই।</td></tr>}
+      {!rows.length&&<tr><td colSpan={13+meetingDates.length*4} className="empty">এই সমিতিতে সক্রিয় সদস্য নেই।</td></tr>}
       {rows.length>0&&<tr><th colSpan={3}>সর্বমোট</th><th>{money(totals.gsOpen)}</th><th>{money(totals.ltsOpen)}</th><th>{money(totals.loanOpen)}</th>
         {meetingDates.flatMap((d,j)=>[<th key={d+'g'}>{money(rows.reduce((s,r)=>s+r.gsBy[j],0))}</th>,<th key={d+'l'}>{money(rows.reduce((s,r)=>s+r.ltsBy[j],0))}</th>,<th key={d+'due'}>{money(rows.reduce((s,r)=>s+r.loanDueBy[j],0))}</th>,<th key={d+'loan'}>{money(rows.reduce((s,r)=>s+r.loanBy[j],0))}</th>])}
         <th>{money(totals.gsTotal)}</th><th>{money(totals.ltsTotal)}</th><th>{money(totals.loanDueTotal)}</th><th>{money(totals.loanTotal)}</th><th>{money(totals.gsClose)}</th><th>{money(totals.ltsClose)}</th><th>{money(totals.loanClose)}</th></tr>}
