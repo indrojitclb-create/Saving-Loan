@@ -189,3 +189,6 @@ revoke all on function public.reschedule_all_active_loan_installments() from pub
 revoke all on function public.trigger_reschedule_after_holiday_change() from public, anon, authenticated;
 revoke all on function public.prevent_friday_samity_meeting() from public, anon, authenticated;
 revoke all on function public.prevent_friday_loan_disbursement() from public, anon, authenticated;
+
+-- Apply the currently registered holidays to already-existing active loan schedules.
+select public.reschedule_all_active_loan_installments();
