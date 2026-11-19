@@ -14,6 +14,7 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [loans,setLoans]=useState<any[]>([]);
   const [loanTx,setLoanTx]=useState<any[]>([]);
   const [loanSchedule,setLoanSchedule]=useState<any[]>([]);
+  const [loanSchedule,setLoanSchedule]=useState<any[]>([]);
   const [closures,setClosures]=useState<any[]>([]);
   const [holidayRows,setHolidayRows]=useState<any[]>([]);
   const [fridayEnabled,setFridayEnabled]=useState(true);
@@ -42,8 +43,9 @@ export default function CollectionModule({samities,canDo}:Props) {
       }
       date.setDate(date.getDate()+1);
     }
-    return result;
-  },[selectedSamity,month,closures,holidayRows,fridayEnabled]);
+    const scheduledDates = loanSchedule.map(x=>x.due_date).filter(d=>d>=month+'-01' && d<=dateText(new Date(year,mon,0,12)));
+    return Array.from(new Set([...result,...scheduledDates])).sort();
+  },[selectedSamity,month,closures,holidayRows,fridayEnabled,loanSchedule]);
 
   const displayDates=useMemo(()=>Array.from(new Set([...meetingDates,...loanSchedule.map(x=>x.due_date).filter((d:string)=>d>=month+'-01'&&d<=month+'-31')])).sort(),[meetingDates,loanSchedule,month]);
 
@@ -71,7 +73,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       const [tr,sch]=loanIds.length?await Promise.all([supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount').in('loan_id',loanIds).lte('transaction_date',end).order('transaction_date'),supabase.from('loan_installment_schedule').select('id,loan_id,week_no,due_date,total_due,status').in('loan_id',loanIds).gte('due_date',start).lte('due_date',end).order('due_date')]):[{data:[],error:null},{data:[],error:null}] as any;
       if(tr.error||sch.error){if(!cancelled)setNotice('ঋণ আদায়/কিস্তির তথ্য পড়া যায়নি: '+(tr.error?.message||sch.error?.message));setLoading(false);return;}
       if(!cancelled){
-        setMembers(mr.data||[]);setSavings(sr.data||[]);setLoans(lr.data||[]);setLoanTx(tr.data||[]);setLoanSchedule(sch.data||[]);
+        setMembers(mr.data||[]);setSavings(sr.data||[]);setLoans(lr.data||[]);setLoanTx(tr.data||[]);setLoanSchedule(sch.data||[]);setLoanSchedule(sch.data||[]);
         setClosures(cr.data||[]);
         setHolidayRows(hr.error?[]:hr.data||[]);
         if(!hs.error && hs.data)setFridayEnabled(Boolean(hs.data.friday_holiday_enabled));
@@ -93,7 +95,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     const loanOpen=memberLoans.reduce((s,l)=>s+Number(l.total_repayable??(Number(l.principal)+Number(l.total_service_charge||0))),0)-loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date<month+'-01').reduce((s,x)=>s+Number(x.amount),0);
     const loanBy=displayDates.map(d=>loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date===d).reduce((s,x)=>s+Number(x.amount),0));
     const gsTotal=gsBy.reduce((a,b)=>a+b,0),ltsTotal=ltsBy.reduce((a,b)=>a+b,0),loanTotal=loanBy.reduce((a,b)=>a+b,0);
-    return {...m,gsOpen,ltsOpen,loanOpen,gsBy,ltsBy,loanBy,gsTotal,ltsTotal,loanTotal,gsClose:gsOpen+gsTotal,ltsClose:ltsOpen+ltsTotal,loanClose:Math.max(0,loanOpen-loanTotal)};
+    return {...m,gsOpen,ltsOpen,loanOpen,gsBy,ltsBy,loanBy,loanDueBy,gsTotal,ltsTotal,loanTotal,gsClose:gsOpen+gsTotal,ltsClose:ltsOpen+ltsTotal,loanClose:Math.max(0,loanOpen-loanTotal)};
   }),[members,savings,loans,loanTx,displayDates,month]);
 
   const totals=rows.reduce((a,r)=>({gsOpen:a.gsOpen+r.gsOpen,ltsOpen:a.ltsOpen+r.ltsOpen,loanOpen:a.loanOpen+r.loanOpen,gsTotal:a.gsTotal+r.gsTotal,ltsTotal:a.ltsTotal+r.ltsTotal,loanTotal:a.loanTotal+r.loanTotal,gsClose:a.gsClose+r.gsClose,ltsClose:a.ltsClose+r.ltsClose,loanClose:a.loanClose+r.loanClose}),{gsOpen:0,ltsOpen:0,loanOpen:0,gsTotal:0,ltsTotal:0,loanTotal:0,gsClose:0,ltsClose:0,loanClose:0});
