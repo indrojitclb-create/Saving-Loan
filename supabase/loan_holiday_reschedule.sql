@@ -66,7 +66,7 @@ begin
   )
   where a.id = p_loan_id;
 end;
-$;
+$reschedule$;
 
 create or replace function public.reschedule_all_active_loan_installments()
 returns void
