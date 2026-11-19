@@ -182,3 +182,25 @@ begin
 end;
 $$;
 grant execute on function public.change_samity_meeting(uuid,smallint,time,text,date,text) to authenticated;
+
+-- Apply the currently registered holiday calendar immediately as part of this migration.
+-- This includes holidays that were entered before this feature was installed.
+do $
+declare
+  v_samity record;
+begin
+  for v_samity in
+    select distinct m.samity_id
+    from public.members m
+    join public.loan_accounts a on a.member_id = m.id
+    join public.loan_installment_schedule s on s.loan_id = a.id
+    where a.status = 'active'
+  loop
+    perform public.reschedule_unpaid_installments_for_samity(v_samity.samity_id);
+  end loop;
+end;
+$;
+
+revoke all on function public.reschedule_unpaid_installments_for_samity(uuid) from public, anon, authenticated;
+revoke all on function public.reschedule_all_samity_installments() from public, anon, authenticated;
+
