@@ -94,6 +94,7 @@ export default function LoanModule({ samities, canDo }: Props) {
     if (Number(selectedSamity.meeting_day) === 5) { setNotice('শুক্রবার কোনো সমিতির সভার দিন হতে পারবে না। সমিতির সভার দিন সংশোধন করুন।'); return; }
     const disb = new Date(disbursementDate + 'T12:00:00'); disb.setDate(disb.getDate()+14);
     if (new Date(firstDate + 'T12:00:00') < disb) { setNotice('প্রথম কিস্তি ঋণ বিতরণের কমপক্ষে ১৪ দিন পরে হতে হবে।'); return; }
+    if (new Date(firstDate + 'T12:00:00').getDay() !== Number(selectedSamity.meeting_day)) { setNotice('ম্যানুয়ালি দেওয়া প্রথম কিস্তির তারিখ সমিতির নির্ধারিত সভার দিনের সঙ্গে মিলতে হবে।'); return; }
     if (selectedClosedDates.includes(firstDate)) { setNotice('নির্বাচিত প্রথম কিস্তির দিনটি বন্ধ। একই বার পরবর্তী সপ্তাহ নির্বাচন করুন।'); return; }
     const closedDates = selectedClosedDates;
     let dates: string[];
