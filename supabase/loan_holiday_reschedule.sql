@@ -9,6 +9,7 @@ set search_path = public
 as $reschedule$
 declare
   v_samity_id uuid;
+  v_meeting_day smallint;
   v_row record;
   v_candidate date;
   v_previous_date date := null;
@@ -17,12 +18,13 @@ declare
   v_i integer;
   v_count integer;
 begin
-  select m.samity_id into v_samity_id
+  select m.samity_id, sm.meeting_day into v_samity_id, v_meeting_day
   from public.loan_accounts a
   join public.members m on m.id = a.member_id
+  join public.samities sm on sm.id = m.samity_id
   where a.id = p_loan_id and a.status = 'active';
 
-  if v_samity_id is null then return; end if;
+  if v_samity_id is null or v_meeting_day = 5 then return; end if;
 
   -- Calculate the complete target sequence first. This preserves weekly order
   -- and reserves paid/historical dates before any unique due_date is updated.
