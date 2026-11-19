@@ -63,6 +63,7 @@ export function calculateFirstInstallmentDate(
     throw new Error('ঋণ বিতরণের তারিখ অথবা সমিতির সভার দিন সঠিক নয়। শুক্রবার সমিতির সভার দিন হতে পারবে না।');
   }
   const date = new Date(disbursementDate + 'T12:00:00');
+  if (Number.isNaN(date.getTime())) throw new Error('ঋণ বিতরণের তারিখ সঠিক নয়।');
   date.setDate(date.getDate() + 14);
   while (date.getDay() !== meetingDay) date.setDate(date.getDate() + 1);
   const closed = new Set(closedDates);
