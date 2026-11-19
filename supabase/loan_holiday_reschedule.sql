@@ -140,6 +140,34 @@ create trigger samities_no_friday_meeting
 before insert or update of meeting_day on public.samities
 for each row execute function public.prevent_friday_samity_meeting();
 
+-- Database-level protection: loans cannot be disbursed to legacy samities
+-- whose meeting weekday is Friday, even if the client-side form is bypassed.
+create or replace function public.prevent_friday_loan_disbursement()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $friday_loan$
+declare
+  v_meeting_day smallint;
+begin
+  select sm.meeting_day into v_meeting_day
+  from public.members m
+  join public.samities sm on sm.id = m.samity_id
+  where m.id = new.member_id;
+
+  if v_meeting_day = 5 then
+    raise exception 'শুক্রবার সভার দিন থাকা সমিতিতে নতুন ঋণ বিতরণ করা যাবে না। আগে সমিতির সভার দিন সংশোধন করুন।';
+  end if;
+  return new;
+end;
+$friday_loan$;
+
+drop trigger if exists loan_accounts_no_friday_samity on public.loan_accounts;
+create trigger loan_accounts_no_friday_samity
+before insert or update of member_id, disbursement_date on public.loan_accounts
+for each row execute function public.prevent_friday_loan_disbursement();
+
 -- Re-check old Friday meeting assignments as an explicit migration warning.
 do $$
 declare
@@ -158,3 +186,4 @@ revoke all on function public.reschedule_unpaid_loan_installments(uuid) from pub
 revoke all on function public.reschedule_all_active_loan_installments() from public, anon, authenticated;
 revoke all on function public.trigger_reschedule_after_holiday_change() from public, anon, authenticated;
 revoke all on function public.prevent_friday_samity_meeting() from public, anon, authenticated;
+revoke all on function public.prevent_friday_loan_disbursement() from public, anon, authenticated;
