@@ -158,7 +158,7 @@ export default function LoanModule({ samities, canDo }: Props) {
     });
     if (result.error) setNotice('বন্ধের দিন সংরক্ষণ হয়নি: ' + result.error.message);
     else {
-      setNotice('সমিতির বন্ধের দিন সংরক্ষিত হয়েছে। নতুন ঋণের কিস্তি তৈরির সময় দিনটি বাদ যাবে।');
+      setNotice('সমিতির বন্ধের দিন সংরক্ষিত হয়েছে। বিদ্যমান ঋণের বকেয়া কিস্তির তারিখও স্বয়ংক্রিয়ভাবে পুনর্নির্ধারণ করা হয়েছে; আদায়ের রেকর্ড অপরিবর্তিত আছে।');
       setClosureReason('');
       await load();
     }
