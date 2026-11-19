@@ -59,7 +59,7 @@ export function calculateFirstInstallmentDate(
   meetingDay: number,
   closedDates: string[],
 ): string {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(disbursementDate) || !Number.isInteger(meetingDay) || meetingDay < 0 || meetingDay > 6 || meetingDay === 5) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(disbursementDate) || !Number.isInteger(meetingDay) || meetingDay < 0 || meetingDay > 6 || meetingDay === 5) {
     throw new Error('ঋণ বিতরণের তারিখ অথবা সমিতির সভার দিন সঠিক নয়। শুক্রবার সমিতির সভার দিন হতে পারবে না।');
   }
   const date = new Date(disbursementDate + 'T12:00:00');
@@ -77,7 +77,7 @@ export function buildInstallmentDates(
   meetingDay: number,
   closedDates: string[],
 ): string[] {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(firstDate) || meetingDay < 0 || meetingDay > 6) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDate) || meetingDay < 0 || meetingDay > 6 || meetingDay === 5) {
     throw new Error('প্রথম কিস্তির তারিখ অথবা সমিতির সভার দিন সঠিক নয়। শুক্রবার সমিতির সভার দিন হতে পারবে না।');
   }
   const closed = new Set(closedDates);
