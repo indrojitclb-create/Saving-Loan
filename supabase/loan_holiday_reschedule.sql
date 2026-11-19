@@ -6,7 +6,7 @@ returns void
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $reschedule$
 declare
   v_samity_id uuid;
   v_row record;
