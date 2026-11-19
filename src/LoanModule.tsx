@@ -17,6 +17,8 @@ export default function LoanModule({ samities, canDo }: Props) {
   const [disbursementDate, setDisbursementDate] = useState(new Date().toISOString().slice(0,10));
   const [firstDate, setFirstDate] = useState('');
   const [closures, setClosures] = useState<any[]>([]);
+  const [holidayRows, setHolidayRows] = useState<any[]>([]);
+  const [fridayEnabled, setFridayEnabled] = useState(true);
   const [closureSamity, setClosureSamity] = useState('');
   const [closureDate, setClosureDate] = useState('');
   const [closureReason, setClosureReason] = useState('');
@@ -32,16 +34,20 @@ export default function LoanModule({ samities, canDo }: Props) {
   async function load() {
     if (!supabase) return;
     setLoading(true);
-    const [memberResult, loanResult, closureResult] = await Promise.all([
+    const [memberResult, loanResult, closureResult, holidayResult, holidaySettingResult] = await Promise.all([
       supabase.from('members').select('id,member_code,full_name,samity_id,branch_id,is_active').eq('is_active', true).order('member_code'),
       supabase.from('loan_accounts').select('id,loan_no,member_id,principal,total_service_charge,total_repayable,disbursement_date,first_installment_date,schedule_status,status').order('created_at', {ascending:false}),
       supabase.from('samity_week_closures').select('*').order('closure_date', {ascending:false}),
+      supabase.from('holiday_calendar').select('*').eq('is_active',true),
+      supabase.from('holiday_calendar_settings').select('friday_holiday_enabled').eq('id',1).maybeSingle(),
     ]);
     if (memberResult.error) setNotice('সদস্য তালিকা পড়া যায়নি। আগে Supabase SQL সেটআপ সম্পন্ন করুন: ' + memberResult.error.message);
     else setMembers(memberResult.data || []);
     if (loanResult.error) setNotice('ঋণ তালিকা পড়া যায়নি: ' + loanResult.error.message);
     else setLoans(loanResult.data || []);
     if (!closureResult.error) setClosures(closureResult.data || []);
+    if (!holidayResult.error) setHolidayRows(holidayResult.data || []);
+    if (!holidaySettingResult.error && holidaySettingResult.data) setFridayEnabled(Boolean(holidaySettingResult.data.friday_holiday_enabled));
     setLoading(false);
   }
   useEffect(() => { load(); }, []);
@@ -54,7 +60,28 @@ export default function LoanModule({ samities, canDo }: Props) {
     if (!loanNo.trim()) { setNotice('ঋণ নম্বর লিখুন।'); return; }
     if (!preview.length) { setNotice('ঋণের পরিমাণ ১,০০০–২,০০,০০০ টাকার মধ্যে ১,০০০ টাকার গুণিতক হতে হবে।'); return; }
     if (!firstDate) { setNotice('প্রথম কিস্তির তারিখ নির্বাচন করুন।'); return; }
+    if (fridayEnabled && new Date(firstDate+'T12:00:00').getDay()===5) { setNotice('শুক্রবার স্বয়ংক্রিয় ছুটি। প্রথম কিস্তির জন্য অন্য তারিখ নির্বাচন করুন।'); return; }
+    const relevantHolidays = holidayRows.filter(h =>
+      h.scope === 'organization' ||
+      (h.scope === 'branch' && h.branch_id === selectedSamity.branch_id) ||
+      (h.scope === 'samity' && h.samity_id === selectedSamity.id)
+    );
     const closedDates = closures.filter(x => x.samity_id === selectedSamity.id).map(x => x.closure_date);
+    for (const h of relevantHolidays) {
+      const d = new Date(h.date_from + 'T12:00:00');
+      const end = new Date(h.date_to + 'T12:00:00');
+      while (d <= end) {
+        closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
+        d.setDate(d.getDate()+1);
+      }
+    }
+    if (fridayEnabled && Number(selectedSamity.meeting_day) === 5) {
+      const d = new Date(firstDate + 'T12:00:00');
+      for (let i=0;i<400;i++) {
+        if (d.getDay()===5) closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));
+        d.setDate(d.getDate()+7);
+      }
+    }
     let dates: string[];
     try { dates = buildInstallmentDates(firstDate, Number(selectedSamity.meeting_day), closedDates); }
     catch (error) { setNotice(error instanceof Error ? error.message : 'কিস্তির তারিখ সঠিক নয়।'); return; }

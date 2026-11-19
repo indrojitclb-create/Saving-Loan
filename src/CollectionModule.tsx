@@ -14,6 +14,8 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [loans,setLoans]=useState<any[]>([]);
   const [loanTx,setLoanTx]=useState<any[]>([]);
   const [closures,setClosures]=useState<any[]>([]);
+  const [holidayRows,setHolidayRows]=useState<any[]>([]);
+  const [fridayEnabled,setFridayEnabled]=useState(true);
   const [loading,setLoading]=useState(false);
   const [notice,setNotice]=useState('');
   const selectedSamity=samities.find(s=>s.id===samityId);
@@ -28,12 +30,19 @@ export default function CollectionModule({samities,canDo}:Props) {
     while(date.getMonth()===mon-1){
       if(date.getDay()===day){
         const value=dateText(date);
-        if(!closures.some(x=>x.closure_date===value))result.push(value);
+        const centralClosed = holidayRows.some(h =>
+          h.is_active && value>=h.date_from && value<=h.date_to &&
+          (h.scope==='organization' ||
+            (h.scope==='branch' && h.branch_id===selectedSamity.branch_id) ||
+            (h.scope==='samity' && h.samity_id===selectedSamity.id))
+        );
+        const fridayClosed = fridayEnabled && day===5;
+        if(!closures.some(x=>x.closure_date===value) && !centralClosed && !fridayClosed)result.push(value);
       }
       date.setDate(date.getDate()+1);
     }
     return result;
-  },[selectedSamity,month,closures]);
+  },[selectedSamity,month,closures,holidayRows,fridayEnabled]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -47,16 +56,23 @@ export default function CollectionModule({samities,canDo}:Props) {
       if(mr.error){if(!cancelled)setNotice('সদস্য তালিকা পড়া যায়নি: '+mr.error.message);setLoading(false);return;}
       const ids=(mr.data||[]).map(x=>x.id);
       if(!ids.length){if(!cancelled){setMembers([]);setSavings([]);setLoans([]);setLoanTx([]);setLoading(false);}return;}
-      const [sr,lr,cr]=await Promise.all([
+      const [sr,lr,cr,hr,hs]=await Promise.all([
         supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category').in('member_id',ids).lte('transaction_date',end).order('transaction_date'),
         supabase.from('loan_accounts').select('id,loan_no,member_id,principal,total_repayable,total_service_charge,disbursement_date,status').in('member_id',ids).order('disbursement_date'),
-        supabase.from('samity_week_closures').select('closure_date').eq('samity_id',samityId).gte('closure_date',start).lte('closure_date',end)
+        supabase.from('samity_week_closures').select('closure_date').eq('samity_id',samityId).gte('closure_date',start).lte('closure_date',end),
+        supabase.from('holiday_calendar').select('*').eq('is_active',true).lte('date_from',end).gte('date_to',start),
+        supabase.from('holiday_calendar_settings').select('friday_holiday_enabled').eq('id',1).maybeSingle()
       ]);
       if(sr.error||lr.error){if(!cancelled)setNotice('আদায় তথ্য পড়া যায়নি: '+(sr.error?.message||lr.error?.message));setLoading(false);return;}
       const loanIds=(lr.data||[]).map(x=>x.id);
       const tr=loanIds.length?await supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount').in('loan_id',loanIds).lt('transaction_date',end).order('transaction_date'): {data:[],error:null} as any;
       if(tr.error){if(!cancelled)setNotice('ঋণ আদায়ের তথ্য পড়া যায়নি: '+tr.error.message);setLoading(false);return;}
-      if(!cancelled){setMembers(mr.data||[]);setSavings(sr.data||[]);setLoans(lr.data||[]);setLoanTx(tr.data||[]);setClosures(cr.data||[]);}
+      if(!cancelled){
+        setMembers(mr.data||[]);setSavings(sr.data||[]);setLoans(lr.data||[]);setLoanTx(tr.data||[]);
+        setClosures(cr.data||[]);
+        setHolidayRows(hr.error?[]:hr.data||[]);
+        if(!hs.error && hs.data)setFridayEnabled(Boolean(hs.data.friday_holiday_enabled));
+      }
       setLoading(false);
     }
     load();

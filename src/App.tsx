@@ -3,9 +3,10 @@ import type { FormEvent } from 'react';
 import MemberModule from './MemberModule';
 import LoanModule from './LoanModule';
 import CollectionModule from './CollectionModule';
+import HolidayModule from './HolidayModule';
 import { configured, configurationError, supabase } from './lib/supabase';
 
-type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'collection' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings';
+type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'collection' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings' | 'holiday_calendar';
 type Employee = {
   id: string; employee_code: string; full_name: string; phone: string | null;
   email: string | null; branch_id: string | null; designation: string | null;
@@ -37,6 +38,7 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'member_transfer', label: 'সদস্যের সমিতি পরিবর্তন', desc: 'সদস্যকে অন্য সমিতিতে স্থানান্তর' },
   { key: 'members', label: 'সদস্য নিবন্ধন ও তালিকা', desc: 'নতুন সদস্য নিবন্ধন ও সদস্যের তথ্য' },
   { key: 'optional_savings', label: 'Optional Savings Setup', desc: 'ঐচ্ছিক সঞ্চয় স্কিম তৈরি ও পরিচালনা' },
+  { key: 'holiday_calendar', label: 'Holiday Calendar', desc: 'প্রতিষ্ঠান, Branch ও Samity-এর কেন্দ্রীয় ছুটি' },
 ];
 
 const emptyEmployee = {
@@ -92,7 +94,7 @@ export default function App() {
   const [showSamityForm, setShowSamityForm] = useState(false);
   const [editingSamityId, setEditingSamityId] = useState<string | null>(null);
   const [samityForm, setSamityForm] = useState({samity_code:'',samity_name:'',samity_gender:'female',branch_id:'',division_id:'',district_id:'',upazila_id:'',post_office_id:'',village_id:'',meeting_place:'',meeting_day:'2',meeting_time:'10:00',start_date:new Date().toISOString().slice(0,10),status:'active',notes:''});
-  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', optional_savings: 'Optional Savings Setup', users: 'User Management', savings: 'Savings', collection: 'সমিতিভিত্তিক আদায় সিট', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_staff: 'সমিতির কর্মী স্থানান্তর', samity_branch_transfer: 'সমিতির Branch স্থানান্তর', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন' };
+  const moduleLabels: Record<string, string> = { dashboard: 'Dashboard', employees: 'Employee List', members: 'Member List', optional_savings: 'Optional Savings Setup', users: 'User Management', savings: 'Savings', collection: 'সমিতিভিত্তিক আদায় সিট', loans: 'Loan Management', reports: 'Reports', audit: 'Audit Log', area_master: 'কেন্দ্রীয় কর্ম এলাকা', samity: 'সমিতি গঠন', samity_day_change: 'সমিতির দিন ও সময় পরিবর্তন', samity_staff: 'সমিতির কর্মী স্থানান্তর', samity_branch_transfer: 'সমিতির Branch স্থানান্তর', employee_transfer: 'কর্মীর কর্ম এলাকা পরিবর্তন', member_transfer: 'সদস্যের সমিতি পরিবর্তন', holiday_calendar: 'Holiday Calendar' };
 
   const db: any = supabase;
   const isAdmin = role === 'main_admin' || role === 'co_admin';
@@ -714,7 +716,8 @@ export default function App() {
       {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} fullName={fullName} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
       {active === 'loans' && <LoanModule samities={samities} canDo={canDo} />}
       {active === 'collection' && <CollectionModule samities={samities} canDo={canDo} />}
-      {active !== 'dashboard' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active === 'holiday_calendar' && <HolidayModule branches={branches} samities={samities} canDo={canDo} />}
+      {active !== 'dashboard' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
