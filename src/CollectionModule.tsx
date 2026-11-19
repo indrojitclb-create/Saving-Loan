@@ -85,13 +85,15 @@ export default function CollectionModule({samities,canDo}:Props) {
 
   const rows=useMemo(()=>members.map(m=>{
     const memberSavings=savings.filter(x=>x.member_id===m.id);
-    const memberLoans=loans.filter(x=>x.member_id===m.id&&x.status==='active'&&x.disbursement_date<month+'-01');
+    const memberLoans=loans.filter(x=>x.member_id===m.id&&x.status==='active'&&x.disbursement_date<=month+'-31');
+    const openingLoans=memberLoans.filter(x=>x.disbursement_date<month+'-01');
     const loanIds=memberLoans.map(x=>x.id);
     const gsOpen=memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const ltsOpen=memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const gsBy=displayDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='GS'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const ltsBy=displayDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
-    const loanOpen=memberLoans.reduce((s,l)=>s+Number(l.total_repayable??(Number(l.principal)+Number(l.total_service_charge||0))),0)-loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date<month+'-01').reduce((s,x)=>s+Number(x.amount),0);
+    const openingLoanIds=openingLoans.map(x=>x.id);
+    const loanOpen=openingLoans.reduce((s,l)=>s+Number(l.total_repayable??(Number(l.principal)+Number(l.total_service_charge||0))),0)-loanTx.filter(x=>openingLoanIds.includes(x.loan_id)&&x.transaction_date<month+'-01').reduce((s,x)=>s+Number(x.amount),0);
     const loanBy=displayDates.map(d=>loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date===d).reduce((s,x)=>s+Number(x.amount),0));
     const loanDueBy=displayDates.map(d=>loanSchedule.filter(x=>loanIds.includes(x.loan_id)&&x.due_date===d&&x.status!=='paid').reduce((s,x)=>s+Math.max(0,Number(x.total_due)-Number(x.principal_paid||0)-Number(x.service_charge_paid||0)),0));
     const gsTotal=gsBy.reduce((a,b)=>a+b,0),ltsTotal=ltsBy.reduce((a,b)=>a+b,0),loanTotal=loanBy.reduce((a,b)=>a+b,0);
