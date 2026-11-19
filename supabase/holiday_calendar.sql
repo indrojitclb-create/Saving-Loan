@@ -74,8 +74,26 @@ for insert to authenticated with check (
 drop policy if exists holiday_calendar_update on public.holiday_calendar;
 create policy holiday_calendar_update on public.holiday_calendar
 for update to authenticated
-using (public.can_manage_module('holiday_calendar','update'))
-with check (public.can_manage_module('holiday_calendar','update'));
+using (
+  public.can_manage_module('holiday_calendar','update')
+  and (
+    scope = 'organization'
+    or (scope = 'branch' and public.can_access_branch(branch_id))
+    or (scope = 'samity' and exists (
+      select 1 from public.samities s where s.id = samity_id and public.can_access_branch(s.branch_id)
+    ))
+  )
+)
+with check (
+  public.can_manage_module('holiday_calendar','update')
+  and (
+    scope = 'organization'
+    or (scope = 'branch' and public.can_access_branch(branch_id))
+    or (scope = 'samity' and exists (
+      select 1 from public.samities s where s.id = samity_id and public.can_access_branch(s.branch_id)
+    ))
+  )
+);
 drop policy if exists holiday_calendar_delete on public.holiday_calendar;
 create policy holiday_calendar_delete on public.holiday_calendar
 for delete to authenticated using (public.can_manage_module('holiday_calendar','delete'));
@@ -177,4 +195,4 @@ before insert or update of due_date, loan_id on public.loan_installment_schedule
 for each row execute function public.prevent_holiday_transaction();
 
 grant select, insert, update, delete on public.holiday_calendar to authenticated;
-grant select, update on public.holiday_calendar_settings to authenticated;
+grant select, insert, update on public.holiday_calendar_settings to authenticated;
