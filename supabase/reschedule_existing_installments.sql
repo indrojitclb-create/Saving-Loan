@@ -21,13 +21,16 @@ declare
   v_row record;
   v_candidate date;
   v_previous_date date;
+  v_meeting_day smallint;
   v_changed integer := 0;
 begin
   if p_samity_id is null then return 0; end if;
 
   -- Serialize concurrent calendar changes for this samity.
-  perform 1 from public.samities where id = p_samity_id for update;
+  select meeting_day into v_meeting_day from public.samities where id = p_samity_id for update;
   if not found then return 0; end if;
+  -- Legacy Friday samities must be corrected before weekly dates can be safely moved.
+  if v_meeting_day = 5 then return 0; end if;
 
   set constraints loan_installment_schedule_loan_id_due_date_key deferred;
 
