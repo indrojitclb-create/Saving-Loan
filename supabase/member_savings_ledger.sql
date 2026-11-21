@@ -68,7 +68,17 @@ begin
     v_lock_key := new.member_id::text || ':' || new.savings_category;
     perform pg_advisory_xact_lock(hashtextextended(v_lock_key, 0));
 
-    select coalesce(sum(case when t.transaction_type='deposit' then t.amount else -t.amount end),0)
+    select
+      coalesce((
+        select case new.savings_category
+          when 'GS' then o.gs_balance
+          when 'LTS-New' then o.lts_new_balance
+          when 'Optional' then o.optional_balance
+          else 0 end
+        from public.member_savings_opening_balances o
+        where o.member_id = new.member_id
+      ),0)
+      + coalesce(sum(case when t.transaction_type='deposit' then t.amount else -t.amount end),0)
       into v_balance
     from public.savings_transactions t
     where t.member_id = new.member_id
