@@ -184,10 +184,40 @@ begin
     raise exception 'Month End করার অনুমতি নেই';
   end if;
   if extract(day from p_month_start)<>1 then raise exception 'মাসের প্রথম তারিখ দিতে হবে'; end if;
+  if p_month_start >= date_trunc('month',current_date)::date then
+    raise exception 'মাস শেষ হওয়ার পর Month End করা যাবে';
+  end if;
+  if not exists(select 1 from public.daily_collection_sheets
+    where branch_id=p_branch_id and collection_date>=p_month_start
+      and collection_date<(p_month_start+interval '1 month')) then
+    raise exception 'এই মাসে কোনো দৈনিক আদায় সিট পাওয়া যায়নি';
+  end if;
   if exists(select 1 from public.daily_collection_sheets
     where branch_id=p_branch_id and collection_date>=p_month_start
       and collection_date<(p_month_start+interval '1 month') and status<>'closed') then
     raise exception 'এই মাসের সব দৈনিক আদায় সিট Day End করা হয়নি';
+  end if;
+  -- Require a closed sheet for every scheduled Samity meeting day, excluding
+  -- registered Samity closures and the central holiday calendar.
+  if exists(
+    select 1 from public.samities s
+    cross join generate_series(p_month_start::timestamp,
+      (p_month_start+interval '1 month - 1 day')::timestamp,interval '1 day') d(day_date)
+    where s.branch_id=p_branch_id and s.status='active'
+      and extract(dow from d.day_date)::integer=s.meeting_day
+      and not exists(select 1 from public.samity_week_closures c
+        where c.samity_id=s.id and c.closure_date=d.day_date::date)
+      and not exists(select 1 from public.holiday_calendar h
+        where h.is_active and d.day_date::date between h.date_from and h.date_to
+          and (h.scope='organization'
+            or (h.scope='branch' and h.branch_id=p_branch_id)
+            or (h.scope='samity' and h.samity_id=s.id)))
+      and not (s.meeting_day=5 and coalesce((select friday_holiday_enabled
+        from public.holiday_calendar_settings where id=1),false))
+      and not exists(select 1 from public.daily_collection_sheets ds
+        where ds.samity_id=s.id and ds.collection_date=d.day_date::date and ds.status='closed')
+  ) then
+    raise exception 'এই মাসের সব নির্ধারিত সমিতির সভার আদায় সিট পোস্ট ও Day End সম্পন্ন হয়নি';
   end if;
   select jsonb_build_object('sheets',count(*),'month',p_month_start)
     into v_totals from public.daily_collection_sheets
