@@ -76,7 +76,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       }
       setLoading(true);
       const [txResult, enrollmentResult, openingResult] = await Promise.all([
-        supabase.from('savings_transactions')
+        openingOnly ? Promise.resolve({data: [], error: null}) : supabase.from('savings_transactions')
           .select('id,member_id,transaction_date,transaction_type,amount,savings_category,reference_no,notes')
           .eq('member_id', memberId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('member_savings_enrollments')
