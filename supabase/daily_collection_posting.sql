@@ -32,6 +32,7 @@ create table if not exists public.member_opening_loan_transactions (
  opening_loan_id uuid not null references public.member_opening_loans(id) on delete restrict,
  transaction_date date not null,
  amount numeric(14,2) not null check(amount>0),
+ arrears_applied numeric(14,2) not null default 0 check(arrears_applied>=0),
  installment_no integer,
  created_by uuid not null references public.profiles(id),
  collection_sheet_id uuid references public.daily_collection_sheets(id) on delete cascade,
@@ -231,6 +232,14 @@ begin
    if v_sheet.status='posted' then
      insert into public.daily_collection_corrections(sheet_id,old_rows,new_rows,reason,corrected_by)
        values(v_sheet.id,v_sheet.rows,p_rows,trim(p_reason),auth.uid());
+     update public.member_opening_loans l set
+       amount_repaid_to_date=greatest(0,l.amount_repaid_to_date-x.paid),
+       overdue_balance=l.overdue_balance+x.arrears,
+       updated_by=auth.uid(),updated_at=now()
+     from (select opening_loan_id,sum(amount) paid,sum(arrears_applied) arrears
+       from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id group by opening_loan_id) x
+     where l.id=x.opening_loan_id;
+     delete from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id;
      delete from public.savings_transactions where collection_sheet_id=v_sheet.id;
      delete from public.loan_transactions where collection_sheet_id=v_sheet.id;
      update public.loan_installment_schedule s set
@@ -280,15 +289,20 @@ begin
          select greatest(0,outstanding_balance) into v_amt from public.member_opening_loans
            where id=v_opening_loan and member_id=v_member and current_status='active' for update;
          if v_amt is null or v_left>v_amt then raise exception 'প্রারম্ভিক ঋণের অবশিষ্ট স্থিতির চেয়ে বেশি আদায়'; end if;
-         insert into public.member_opening_loan_transactions(opening_loan_id,transaction_date,amount,installment_no,created_by,collection_sheet_id)
-           values(v_opening_loan,p_collection_date,v_left,
+         insert into public.member_opening_loan_transactions(opening_loan_id,transaction_date,amount,arrears_applied,installment_no,created_by,collection_sheet_id)
+           select v_opening_loan,p_collection_date,v_left,least(overdue_balance,v_left),
              (select min(installment_no) from public.member_opening_loan_installment_schedule where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date),
-             auth.uid(),v_sheet.id);
+             auth.uid(),v_sheet.id from public.member_opening_loans where id=v_opening_loan;
          update public.member_opening_loans set
            amount_repaid_to_date=amount_repaid_to_date+v_left,
            overdue_balance=greatest(0,overdue_balance-v_left),
            updated_by=auth.uid(),updated_at=now()
          where id=v_opening_loan;
+         update public.member_opening_loan_installment_schedule set
+           status=case when total_due<=v_left then 'paid' else 'partial' end
+         where opening_loan_id=v_opening_loan and installment_no=(
+           select min(installment_no) from public.member_opening_loan_installment_schedule
+           where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date);
        else
          v_loan:=nullif(r->>'loan_id','')::uuid;
          for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
