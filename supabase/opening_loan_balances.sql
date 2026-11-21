@@ -14,6 +14,7 @@ create table if not exists public.member_opening_loans (
   amount_repaid_to_date numeric(14,2) not null default 0 check (amount_repaid_to_date >= 0),
   current_status text not null default 'active'
     check (current_status in ('active','closed','written_off')),
+  overdue_balance numeric(14,2) not null default 0 check (overdue_balance >= 0),
   outstanding_balance numeric(14,2)
     generated always as (greatest(principal_amount + service_charge_amount - amount_repaid_to_date, 0::numeric)) stored,
   last_installment_no integer not null default 0 check (last_installment_no >= 0),
@@ -93,6 +94,7 @@ begin
       'amount_repaid_to_date', new.amount_repaid_to_date,
       'outstanding_balance', new.outstanding_balance,
       'current_status', new.current_status,
+      'overdue_balance', new.overdue_balance,
       'last_installment_no', new.last_installment_no
     )
   );
