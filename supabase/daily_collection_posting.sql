@@ -204,6 +204,7 @@ begin
     cross join generate_series(p_month_start::timestamp,
       (p_month_start+interval '1 month - 1 day')::timestamp,interval '1 day') d(day_date)
     where s.branch_id=p_branch_id and s.status='active'
+      and (s.start_date is null or s.start_date<=d.day_date::date)
       and extract(dow from d.day_date)::integer=s.meeting_day
       and not exists(select 1 from public.samity_week_closures c
         where c.samity_id=s.id and c.closure_date=d.day_date::date)
@@ -219,10 +220,54 @@ begin
   ) then
     raise exception 'এই মাসের সব নির্ধারিত সমিতির সভার আদায় সিট পোস্ট ও Day End সম্পন্ন হয়নি';
   end if;
-  select jsonb_build_object('sheets',count(*),'month',p_month_start)
-    into v_totals from public.daily_collection_sheets
-    where branch_id=p_branch_id and collection_date>=p_month_start
-      and collection_date<(p_month_start+interval '1 month');
+  select jsonb_build_object(
+    'month',p_month_start,
+    'sheet_count',(select count(*) from public.daily_collection_sheets
+      where branch_id=p_branch_id and collection_date>=p_month_start
+        and collection_date<(p_month_start+interval '1 month')),
+    'gs_deposit',coalesce((select sum((r.value->>'gs_deposit')::numeric)
+      from public.daily_collection_sheets s cross join lateral jsonb_array_elements(s.rows) r(value)
+      where s.branch_id=p_branch_id and s.collection_date>=p_month_start
+        and s.collection_date<(p_month_start+interval '1 month')),0),
+    'gs_withdrawal',coalesce((select sum((r.value->>'gs_withdrawal')::numeric)
+      from public.daily_collection_sheets s cross join lateral jsonb_array_elements(s.rows) r(value)
+      where s.branch_id=p_branch_id and s.collection_date>=p_month_start
+        and s.collection_date<(p_month_start+interval '1 month')),0),
+    'lts_new_collected',coalesce((select sum((r.value->>'lts_new')::numeric)
+      from public.daily_collection_sheets s cross join lateral jsonb_array_elements(s.rows) r(value)
+      where s.branch_id=p_branch_id and s.collection_date>=p_month_start
+        and s.collection_date<(p_month_start+interval '1 month')),0),
+    'optional_savings_collected',coalesce((select sum((r.value->>'optional_savings')::numeric)
+      from public.daily_collection_sheets s cross join lateral jsonb_array_elements(s.rows) r(value)
+      where s.branch_id=p_branch_id and s.collection_date>=p_month_start
+        and s.collection_date<(p_month_start+interval '1 month')),0),
+    'loan_collected',coalesce((select sum(t.amount) from public.loan_transactions t
+      join public.loan_accounts a on a.id=t.loan_id join public.members m on m.id=a.member_id
+      where m.branch_id=p_branch_id and t.transaction_date>=p_month_start
+        and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'loan_due',coalesce((select sum(sc.total_due) from public.loan_installment_schedule sc
+      join public.loan_accounts a on a.id=sc.loan_id join public.members m on m.id=a.member_id
+      where m.branch_id=p_branch_id and sc.due_date>=p_month_start
+        and sc.due_date<(p_month_start+interval '1 month')),0),
+    'gs_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+      from public.savings_transactions t join public.members m on m.id=t.member_id
+      where m.branch_id=p_branch_id and t.savings_category='GS'
+        and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'lts_new_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+      from public.savings_transactions t join public.members m on m.id=t.member_id
+      where m.branch_id=p_branch_id and t.savings_category='LTS-New'
+        and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'optional_savings_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+      from public.savings_transactions t join public.members m on m.id=t.member_id
+      where m.branch_id=p_branch_id and t.savings_category='Optional'
+        and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'loan_outstanding',coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
+      coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
+        and t.transaction_date<(p_month_start+interval '1 month')),0)))
+      from public.loan_accounts a join public.members m on m.id=a.member_id
+      where m.branch_id=p_branch_id and a.disbursement_date<(p_month_start+interval '1 month')
+        and a.status='active'),0)
+  ) into v_totals;
   insert into public.collection_month_closures(branch_id,month_start,totals,closed_by)
   values(p_branch_id,p_month_start,v_totals,auth.uid())
   on conflict(branch_id,month_start) do update set
