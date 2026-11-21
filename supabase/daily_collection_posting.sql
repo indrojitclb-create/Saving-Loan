@@ -227,7 +227,7 @@ begin
      v_left:=coalesce((r->>'loan_paid')::numeric,0);
      if v_left>0 then
        v_loan:=nullif(r->>'loan_id','')::uuid;
-       for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid'
+       for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
          order by due_date,week_no for update loop
          exit when v_left<=0;
          v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
