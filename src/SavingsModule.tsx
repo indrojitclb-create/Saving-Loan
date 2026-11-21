@@ -180,6 +180,20 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
           {categories.map(c=><div className="stat-card" key={c.value}><span>{c.label}</span><strong>{money(balances[c.value])}</strong></div>)}
         </div>
       </div>
+      {(openingOnly || canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
+        <h3>Opening Data Input — প্রারম্ভিক সঞ্চয় স্থিতি</h3>
+        <p className="muted">প্রারম্ভিক GS, LTS-New ও Optional ব্যালেন্স আলাদা সংরক্ষণ হবে।</p>
+        <div className="form-grid">
+          <label>Opening Date *<input type="date" required value={openingForm.date} onChange={e=>setOpeningForm({...openingForm,date:e.target.value})}/></label>
+          <label>GS Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.gs} onChange={e=>setOpeningForm({...openingForm,gs:e.target.value})}/></label>
+          <label>LTS-New Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.lts} onChange={e=>setOpeningForm({...openingForm,lts:e.target.value})}/></label>
+          <label>Optional Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.optional} onChange={e=>setOpeningForm({...openingForm,optional:e.target.value})}/></label>
+          <label>Reference<input value={openingForm.reference} onChange={e=>setOpeningForm({...openingForm,reference:e.target.value})}/></label>
+          <label>Remarks<input value={openingForm.notes} onChange={e=>setOpeningForm({...openingForm,notes:e.target.value})}/></label>
+        </div>
+        {openingNotice && <div className="notice">{openingNotice}</div>}
+        <div className="form-actions"><button disabled={openingBusy||!memberId}>{openingBusy?'সংরক্ষণ হচ্ছে...':'Opening Balance সংরক্ষণ'}</button></div>
+      </form>}
       {!openingOnly && canCreate && <form className="employee-form" onSubmit={saveTransaction}>
         <h3>নতুন সঞ্চয় লেনদেন</h3>
         <div className="form-grid">
