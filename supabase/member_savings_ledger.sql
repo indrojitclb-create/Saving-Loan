@@ -1,5 +1,6 @@
 -- Member Savings Ledger hardening.
--- Run after schema.sql, security.sql, member_registration.sql and daily_collection_posting.sql.
+-- Run after schema.sql, security.sql, member_registration.sql, optional_savings_versions.sql,
+-- opening_savings_balances.sql and daily_collection_posting.sql.
 
 -- Savings operators may read member identity within their authorized scope.
 drop policy if exists members_read_for_savings on public.members;
