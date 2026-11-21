@@ -150,7 +150,8 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
 
   async function saveOpeningBalance(e: FormEvent) {
     e.preventDefault(); setOpeningNotice('');
-    if (!supabase || !memberId || !userId || !(canDo('opening_data','create')||canDo('opening_data','update'))) { setOpeningNotice('Opening Data Input-এর অনুমতি নেই।'); return; }
+    if (!supabase || !memberId || !userId) { setOpeningNotice('সদস্য বা ব্যবহারকারীর তথ্য পাওয়া যায়নি।'); return; }
+    if (opening !== null ? !canDo('opening_data','update') : !canDo('opening_data','create')) { setOpeningNotice(opening !== null ? 'বিদ্যমান Opening Balance পরিবর্তনের অনুমতি নেই।' : 'নতুন Opening Balance এন্ট্রির অনুমতি নেই।'); return; }
     const gs=Number(openingForm.gs), lts=Number(openingForm.lts), optional=Number(openingForm.optional);
     if ([gs,lts,optional].some(v=>!Number.isFinite(v)||v<0)) { setOpeningNotice('শূন্য বা তার বেশি সঠিক পরিমাণ লিখুন।'); return; }
     if (optional>0 && !optionalEnrolled) { setOpeningNotice('Optional balance দিতে হলে সদস্য Optional Savings-এ অন্তর্ভুক্ত থাকতে হবে।'); return; }
