@@ -6,6 +6,7 @@ type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: 
 
 type Props = {
   samities: any[];
+  openingOnly?: boolean;
   canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean;
 };
 
@@ -22,7 +23,7 @@ const todayText = () => {
 };
 const money = (n: number) => '৳' + Number(n || 0).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function SavingsModule({ samities, canDo }: Props) {
+export default function SavingsModule({ samities, canDo, openingOnly = false }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [memberId, setMemberId] = useState('');
   const [transactions, setTransactions] = useState<Tx[]>([]);
@@ -43,7 +44,7 @@ export default function SavingsModule({ samities, canDo }: Props) {
   const [openingBusy, setOpeningBusy] = useState(false);
   const [openingNotice, setOpeningNotice] = useState('');
 
-  const canView = canDo('savings','view') || canDo('savings','create');
+  const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
 
   useEffect(() => {
@@ -165,7 +166,7 @@ export default function SavingsModule({ samities, canDo }: Props) {
   if (!canView) return <section className="panel"><h2>অনুমতি প্রয়োজন</h2><p>সঞ্চয় হিসাব দেখার অনুমতি নেই। Main Admin-এর কাছে Savings permission চান।</p></section>;
 
   return <section className="workspace">
-    <div className="section-head"><div><p className="eyebrow">MEMBER SAVINGS LEDGER</p><h2>সদস্যভিত্তিক সঞ্চয় জমা ও উত্তোলন</h2><p>GS, LTS-New ও Optional Savings-এর পৃথক স্থিতি ও লেনদেনের ইতিহাস।</p></div></div>
+    <div className="section-head"><div><p className="eyebrow">{openingOnly ? 'OPENING DATA INPUT' : 'MEMBER SAVINGS LEDGER'}</p><h2>{openingOnly ? 'প্রারম্ভিক সঞ্চয় স্থিতি এন্ট্রি' : 'সদস্যভিত্তিক সঞ্চয় জমা ও উত্তোলন'}</h2><p>{openingOnly ? 'সদস্যের পূর্ববর্তী GS, LTS-New ও Optional Savings ব্যালেন্স সংরক্ষণ করুন।' : 'GS, LTS-New ও Optional Savings-এর পৃথক স্থিতি ও লেনদেনের ইতিহাস।'}</p></div></div>
     {notice && <div className="notice">{notice}</div>}
     <div className="form-grid">
       <label>সদস্য খুঁজুন<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="সদস্য কোড বা নাম লিখুন"/></label>
@@ -179,7 +180,7 @@ export default function SavingsModule({ samities, canDo }: Props) {
           {categories.map(c=><div className="stat-card" key={c.value}><span>{c.label}</span><strong>{money(balances[c.value])}</strong></div>)}
         </div>
       </div>
-      {canCreate && <form className="employee-form" onSubmit={saveTransaction}>
+      {!openingOnly && canCreate && <form className="employee-form" onSubmit={saveTransaction}>
         <h3>নতুন সঞ্চয় লেনদেন</h3>
         <div className="form-grid">
           <label>লেনদেনের ধরন *<select value={transactionType} onChange={e=>setTransactionType(e.target.value as 'deposit'|'withdrawal')}><option value="deposit">জমা</option><option value="withdrawal">উত্তোলন</option></select></label>
@@ -192,11 +193,11 @@ export default function SavingsModule({ samities, canDo }: Props) {
         <p className="muted">নির্বাচিত সঞ্চয়ের বর্তমান স্থিতি: <b>{money(selectedBalance)}</b>{transactionType==='withdrawal'?' — এর বেশি উত্তোলন করা যাবে না.':''}</p>
         <div className="form-actions"><button disabled={busy || !memberId}>{busy?'সংরক্ষণ হচ্ছে...':transactionType==='deposit'?'জমা সংরক্ষণ করুন':'উত্তোলন সংরক্ষণ করুন'}</button></div>
       </form>}
-      <h3>লেনদেনের ইতিহাস</h3>
-      <div className="table-wrap"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>সঞ্চয়</th><th>জমা</th><th>উত্তোলন</th><th>রেফারেন্স</th><th>মন্তব্য</th></tr></thead><tbody>
+      {!openingOnly && <h3>লেনদেনের ইতিহাস</h3>}
+      {!openingOnly && <div className="table-wrap"><table><thead><tr><th>তারিখ</th><th>ধরন</th><th>সঞ্চয়</th><th>জমা</th><th>উত্তোলন</th><th>রেফারেন্স</th><th>মন্তব্য</th></tr></thead><tbody>
         {transactions.map(tx=><tr key={tx.id}><td>{tx.transaction_date}</td><td>{tx.transaction_type==='deposit'?'জমা':'উত্তোলন'}</td><td>{categories.find(c=>c.value===tx.savings_category)?.label || tx.savings_category}</td><td>{tx.transaction_type==='deposit'?money(Number(tx.amount)): '—'}</td><td>{tx.transaction_type==='withdrawal'?money(Number(tx.amount)): '—'}</td><td>{tx.reference_no || '—'}</td><td>{tx.notes || '—'}</td></tr>)}
         {transactions.length===0 && <tr><td colSpan={7} className="empty">{loading?'তথ্য লোড হচ্ছে...':'এখনও কোনো সঞ্চয় লেনদেন নেই।'}</td></tr>}
-      </tbody></table></div>
+      </tbody></table></div>}
     </>}
     {!selectedMember && <div className="panel muted">{loading?'সদস্য তালিকা লোড হচ্ছে...':'সঞ্চয় হিসাব দেখতে একজন সদস্য নির্বাচন করুন।'}</div>}
     <p className="muted">লেনদেন সংরক্ষণের পর রেকর্ড সরাসরি ledger-এ যুক্ত হয়। ভুল সংশোধন অনুমোদিত correction workflow-এর মাধ্যমে করা হবে; এই পর্দা থেকে পুরোনো লেনদেন মুছে ফেলা যায় না।</p>
