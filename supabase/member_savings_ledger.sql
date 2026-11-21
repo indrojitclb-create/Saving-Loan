@@ -56,9 +56,19 @@ begin
 
   if new.savings_category = 'Optional' and not exists (
     select 1 from public.member_savings_enrollments e
-    where e.member_id = new.member_id and e.savings_type = 'optional'
+    where e.id = new.enrollment_id
+      and e.member_id = new.member_id
+      and e.savings_type = 'optional'
   ) then
-    raise exception 'এই সদস্য Optional Savings-এ অন্তর্ভুক্ত নন';
+    raise exception 'এই সদস্যের সঠিক Optional Savings স্কিম নির্বাচন করুন';
+  end if;
+
+  if new.savings_category <> 'Optional' and new.enrollment_id is not null then
+    raise exception 'GS/LTS-New লেনদেনে Optional স্কিম সংযুক্ত করা যাবে না';
+  end if;
+
+  if new.savings_type is distinct from case when new.savings_category = 'Optional' then 'optional' else 'mandatory' end then
+    raise exception 'সঞ্চয়ের ধরন ও হিসাবের শ্রেণি মিলছে না';
   end if;
 
   if new.transaction_type not in ('deposit','withdrawal') then
