@@ -19,7 +19,7 @@ create index if not exists member_savings_opening_member_idx on public.member_sa
 alter table public.member_savings_opening_balances enable row level security;
 drop policy if exists member_savings_opening_read on public.member_savings_opening_balances;
 create policy member_savings_opening_read on public.member_savings_opening_balances for select to authenticated
-using (public.can_access_member(member_id) and (public.is_admin_or_coadmin() or public.has_module_permission('opening_data','view') or public.has_module_permission('opening_data','create')));
+using (public.can_access_member(member_id) and (public.is_admin_or_coadmin() or public.has_module_permission('opening_data','view') or public.has_module_permission('opening_data','create') or public.has_module_permission('savings','view') or public.has_module_permission('savings','create')));
 drop policy if exists member_savings_opening_insert on public.member_savings_opening_balances;
 create policy member_savings_opening_insert on public.member_savings_opening_balances for insert to authenticated
 with check (public.can_access_member(member_id) and (public.is_admin_or_coadmin() or public.has_module_permission('opening_data','create')) and created_by=(select auth.uid()));
