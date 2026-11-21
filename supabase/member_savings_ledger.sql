@@ -74,6 +74,9 @@ begin
   if new.transaction_type not in ('deposit','withdrawal') then
     raise exception 'লেনদেনের ধরন সঠিক নয়';
   end if;
+  if new.transaction_date is null or new.transaction_date > current_date then
+    raise exception 'ভবিষ্যৎ তারিখে সঞ্চয় লেনদেন করা যাবে না';
+  end if;
 
   if new.transaction_type = 'withdrawal' then
     v_lock_key := new.member_id::text || ':' || new.savings_category;
@@ -88,12 +91,14 @@ begin
           else 0 end
         from public.member_savings_opening_balances o
         where o.member_id = new.member_id
+          and o.opening_date <= new.transaction_date
       ),0)
       + coalesce(sum(case when t.transaction_type='deposit' then t.amount else -t.amount end),0)
       into v_balance
     from public.savings_transactions t
     where t.member_id = new.member_id
-      and t.savings_category = new.savings_category;
+      and t.savings_category = new.savings_category
+      and t.transaction_date <= new.transaction_date;
 
     if new.amount > v_balance then
       raise exception 'বর্তমান সঞ্চয় স্থিতির বেশি উত্তোলন করা যাবে না। বর্তমান স্থিতি: %', v_balance;
