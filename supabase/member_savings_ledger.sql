@@ -1,6 +1,18 @@
 -- Member Savings Ledger hardening.
 -- Run after schema.sql, security.sql, member_registration.sql and daily_collection_posting.sql.
 
+-- Savings operators may read member identity within their authorized scope.
+drop policy if exists members_read_for_savings on public.members;
+create policy members_read_for_savings on public.members
+for select to authenticated
+using (
+  public.can_access_member(id)
+  and (
+    public.can_manage_module('savings','view')
+    or public.can_manage_module('savings','create')
+  )
+);
+
 -- Direct Savings screen entries require the Savings create permission.
 drop policy if exists savings_insert_scope on public.savings_transactions;
 create policy savings_insert_scope on public.savings_transactions
