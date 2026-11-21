@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
+import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
 type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string };
-type OpeningLoan = { id:string; member_id:string; loan_no:string; disbursement_date:string; project_name:string; loan_cycle:number; principal_amount:number; service_charge_amount:number; amount_repaid_to_date:number; current_status:'active'|'closed'|'written_off'; outstanding_balance:number; overdue_balance:number; last_installment_no:number; reference_no:string|null; notes:string|null };
+type OpeningLoan = { id:string; member_id:string; loan_no:string; disbursement_date:string; project_name:string; loan_cycle:number; principal_amount:number; service_charge_amount:number; amount_repaid_to_date:number; current_status:'active'|'closed'|'written_off'; outstanding_balance:number; overdue_balance:number; last_installment_no:number; last_installment_date:string|null; next_installment_date:string|null; next_collectible_balance:number; reference_no:string|null; notes:string|null };
 
 type Props = {
   samities: any[];
@@ -45,10 +46,13 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [openingBusy, setOpeningBusy] = useState(false);
   const [openingNotice, setOpeningNotice] = useState('');
   const [openingLoans,setOpeningLoans]=useState<OpeningLoan[]>([]);
-  const [loanForm,setLoanForm]=useState({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active' as 'active'|'closed'|'written_off',overdue_balance:'0',last_installment_no:'0',reference_no:'',notes:''});
+  const [loanForm,setLoanForm]=useState({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active' as 'active'|'closed'|'written_off',overdue_balance:'0',last_installment_no:'0',last_installment_date:'',reference_no:'',notes:''});
   const [editingLoanId,setEditingLoanId]=useState('');
   const [loanBusy,setLoanBusy]=useState(false);
   const [loanNotice,setLoanNotice]=useState('');
+  const [openingClosures,setOpeningClosures]=useState<string[]>([]);
+  const [openingHolidays,setOpeningHolidays]=useState<any[]>([]);
+  const [openingFridayEnabled,setOpeningFridayEnabled]=useState(true);
 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
@@ -112,6 +116,23 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   }, [memberId,openingOnly]);
 
   useEffect(() => {
+    if(!openingOnly||!supabase||!selectedSamity){setOpeningClosures([]);setOpeningHolidays([]);return;}
+    let live=true;
+    (async()=>{
+      const [cr,hr,fr]=await Promise.all([
+        supabase.from('samity_week_closures').select('closure_date').eq('samity_id',selectedSamity.id),
+        supabase.from('holiday_calendar').select('scope,branch_id,samity_id,date_from,date_to,is_active').eq('is_active',true),
+        supabase.from('holiday_calendar_settings').select('friday_holiday_enabled').eq('id',1).maybeSingle()
+      ]);
+      if(!live)return;
+      setOpeningClosures((cr.data||[]).map((x:any)=>x.closure_date));
+      setOpeningHolidays(hr.data||[]);
+      if(!fr.error&&fr.data)setOpeningFridayEnabled(Boolean(fr.data.friday_holiday_enabled));
+    })();
+    return()=>{live=false;};
+  },[openingOnly,selectedSamity?.id]);
+
+  useEffect(() => {
     setOpeningForm(opening ? {
       gs: String(opening.gs_balance ?? 0),
       lts: String(opening.lts_new_balance ?? 0),
@@ -124,6 +145,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   }, [opening, memberId]);
 
   const selectedMember = members.find(m => m.id === memberId);
+  const selectedSamity = samities.find(m => m.id === selectedMember?.samity_id);
   const samity = samities.find(s => s.id === selectedMember?.samity_id);
   const balances = useMemo(() => {
     const result: Record<string, number> = { GS: Number(opening?.gs_balance||0), 'LTS-New': Number(opening?.lts_new_balance||0), Optional: Number(opening?.optional_balance||0) };
@@ -193,12 +215,12 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
 
   function resetLoanForm(){
     setEditingLoanId('');
-    setLoanForm({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active',overdue_balance:'0',last_installment_no:'0',reference_no:'',notes:''});
+    setLoanForm({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active',overdue_balance:'0',last_installment_no:'0',last_installment_date:'',reference_no:'',notes:''});
     setLoanNotice('');
   }
   function editOpeningLoan(loan:OpeningLoan){
     setEditingLoanId(loan.id);
-    setLoanForm({loan_no:loan.loan_no,disbursement_date:loan.disbursement_date,project_name:loan.project_name,loan_cycle:String(loan.loan_cycle),principal_amount:String(loan.principal_amount),service_charge_amount:String(loan.service_charge_amount),amount_repaid_to_date:String(loan.amount_repaid_to_date),current_status:loan.current_status,overdue_balance:String(loan.overdue_balance||0),last_installment_no:String(loan.last_installment_no),reference_no:loan.reference_no||'',notes:loan.notes||''});
+    setLoanForm({loan_no:loan.loan_no,disbursement_date:loan.disbursement_date,project_name:loan.project_name,loan_cycle:String(loan.loan_cycle),principal_amount:String(loan.principal_amount),service_charge_amount:String(loan.service_charge_amount),amount_repaid_to_date:String(loan.amount_repaid_to_date),current_status:loan.current_status,overdue_balance:String(loan.overdue_balance||0),last_installment_no:String(loan.last_installment_no),last_installment_date:loan.last_installment_date||'',reference_no:loan.reference_no||'',notes:loan.notes||''});
     setLoanNotice('');
   }
   async function saveOpeningLoan(e:FormEvent){
@@ -206,14 +228,59 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if(!supabase||!memberId||!userId){setLoanNotice('সদস্য বা ব্যবহারকারীর তথ্য পাওয়া যায়নি।');return;}
     if(editingLoanId?!canDo('opening_data','update'):!canDo('opening_data','create')){setLoanNotice('এই ঋণ তথ্য সংরক্ষণ/পরিবর্তনের অনুমতি নেই।');return;}
     const principal=Number(loanForm.principal_amount),charge=Number(loanForm.service_charge_amount),repaid=Number(loanForm.amount_repaid_to_date),arrears=Number(loanForm.overdue_balance),cycle=Number(loanForm.loan_cycle),last=Number(loanForm.last_installment_no);
-    if(!loanForm.loan_no.trim()||!loanForm.project_name.trim()||!loanForm.disbursement_date||![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<=0||charge<0||repaid<0||arrears<0||cycle<1||last<0||repaid>principal+charge){setLoanNotice('ঋণের তথ্য ও টাকার পরিমাণ যাচাই করুন। এ পর্যন্ত আদায় আসল ঋণ ও সেবামূল্যের যোগফলের বেশি হতে পারবে না।');return;}
+    if(!loanForm.loan_no.trim()||!loanForm.project_name.trim()||!loanForm.disbursement_date||![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||arrears<0||cycle<1||last<0||last>46||repaid>principal+charge||(last>0&&!loanForm.last_installment_date)){setLoanNotice('ঋণের তথ্য যাচাই করুন। আসল ঋণ ১,০০০–২,০০,০০০ টাকার মধ্যে ১,০০০ টাকার গুণিতক হতে হবে; সর্বশেষ কিস্তি নম্বর ০–৪৬ এবং কিস্তি নম্বর ০-এর বেশি হলে সর্বশেষ কিস্তির তারিখ দিতে হবে।');return;}
     if(loanForm.current_status==='closed'&&principal+charge-repaid>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ অবস্থা নির্বাচন করা যাবে না।');return;}
+    if(!selectedSamity||!Number.isInteger(Number(selectedSamity.meeting_day))){setLoanNotice('সদস্যের সমিতির সভার দিন নির্ধারিত নেই।');return;}
+    const relevantHolidays=openingHolidays.filter(h=>h.is_active&&(h.scope==='organization'||(h.scope==='branch'&&h.branch_id===selectedSamity.branch_id)||(h.scope==='samity'&&h.samity_id===selectedSamity.id)));
+    const closedDates=[...openingClosures];
+    for(const h of relevantHolidays){const d=new Date(h.date_from+'T12:00:00'),end=new Date(h.date_to+'T12:00:00');while(d<=end){closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')).join('-'));d.setDate(d.getDate()+1);}}
+    if(openingFridayEnabled){const d=new Date(loanForm.disbursement_date+'T12:00:00'),end=new Date(d);end.setDate(end.getDate()+46*7+60);for(;d<=end;d.setDate(d.getDate()+1))if(d.getDay()===5)closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')).join('-');}
+    let nextInstallmentDate:string|null=null;
+    let generatedSchedule:any[]=[];
+    const remainingBalance=Math.max(0,principal+charge-repaid);
+    const nextCollectibleBalance=Math.max(0,remainingBalance-arrears);
+    if(loanForm.current_status==='active'&&last<46&&nextCollectibleBalance>0){
+      try{
+        const allRows=calculateLoanSchedule(principal);
+        let firstDate:string;
+        if(last===0)firstDate=calculateFirstInstallmentDate(loanForm.disbursement_date,Number(selectedSamity.meeting_day),closedDates);
+        else{
+          const d=new Date(loanForm.last_installment_date+'T12:00:00');
+          if(Number.isNaN(d.getTime())||d.getDay()!==Number(selectedSamity.meeting_day))throw new Error('সর্বশেষ কিস্তির তারিখ সমিতির সভার দিনের সঙ্গে মিলতে হবে।');
+          d.setDate(d.getDate()+7);
+          while(closedDates.includes([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate())].join('-')))d.setDate(d.getDate()+7);
+          firstDate=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate())].join('-');
+        }
+        const dates=buildInstallmentDates(firstDate,Number(selectedSamity.meeting_day),closedDates).slice(0,46-last);
+        const remainingRows=allRows.filter(x=>x.weekNo>last);
+        const rawTotal=remainingRows.reduce((sum,x)=>sum+x.totalDue,0);
+        let allocated=0;
+        generatedSchedule=remainingRows.map((row,index)=>{
+          const total=index===remainingRows.length-1?Math.max(0,nextCollectibleBalance-allocated):nextCollectibleBalance*row.totalDue/rawTotal;
+          allocated+=total;
+          const principalPart=row.totalDue?total*row.principalDue/row.totalDue:0;
+          return {installment_no:row.weekNo,due_date:dates[index],principal_due:principalPart,service_charge_due:total-principalPart,total_due:total,status:'due'};
+        });
+        nextInstallmentDate=dates[0]||null;
+      }catch(err){setLoanNotice(err instanceof Error?err.message:'ঋণ সিডিউল তৈরি করা যাচ্ছে না।');return;}
+    }
+    if(loanForm.current_status==='closed'&&remainingBalance>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ করা যাবে না।');return;}
     setLoanBusy(true);
-    const payload={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
-    const result=editingLoanId?await supabase.from('member_opening_loans').update(payload).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payload);
+    const payload={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
+    const payloadWithDates={...payload,next_installment_date:nextInstallmentDate};
+    const result=editingLoanId?await supabase.from('member_opening_loans').update(payloadWithDates).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payloadWithDates).select('id').single();
     setLoanBusy(false);
     if(result.error){setLoanNotice('ঋণের তথ্য সংরক্ষণ হয়নি: '+result.error.message);return;}
-    setLoanNotice('প্রারম্ভিক ঋণের তথ্য সংরক্ষিত হয়েছে।');resetLoanForm();
+    const savedLoanId=editingLoanId||result.data?.id;
+    if(savedLoanId){
+      const deleted=await supabase.from('member_opening_loan_installment_schedule').delete().eq('opening_loan_id',savedLoanId);
+      if(deleted.error){setLoanNotice('ঋণের তথ্য সংরক্ষিত হয়েছে, কিন্তু পুরোনো সিডিউল পরিবর্তন করা যায়নি: '+deleted.error.message);return;}
+      if(generatedSchedule.length){
+        const inserted=await supabase.from('member_opening_loan_installment_schedule').insert(generatedSchedule.map(row=>({...row,opening_loan_id:savedLoanId})));
+        if(inserted.error){setLoanNotice('ঋণের তথ্য সংরক্ষিত হয়েছে, কিন্তু সিডিউল সংরক্ষণ হয়নি: '+inserted.error.message);return;}
+      }
+    }
+    setLoanNotice('প্রারম্ভিক ঋণের তথ্য ও অবশিষ্ট কিস্তির সিডিউল সংরক্ষিত হয়েছে।');resetLoanForm();
     const refreshed=await supabase.from('member_opening_loans').select('*').eq('member_id',memberId).order('disbursement_date',{ascending:false});
     if(!refreshed.error)setOpeningLoans((refreshed.data||[]) as OpeningLoan[]);
   }
@@ -263,18 +330,20 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
             <label>এ পর্যন্ত আদায় *<input type="number" min="0" step="0.01" required value={loanForm.amount_repaid_to_date} onChange={e=>setLoanForm({...loanForm,amount_repaid_to_date:e.target.value})}/></label>
             <label>বর্তমান অবস্থা *<select value={loanForm.current_status} onChange={e=>setLoanForm({...loanForm,current_status:e.target.value as any})}><option value="active">চলমান</option><option value="closed">বন্ধ</option><option value="written_off">অবলোপন</option></select></label>
             <label>বকেয়া স্থিতি *<input type="number" min="0" step="0.01" required value={loanForm.overdue_balance} onChange={e=>setLoanForm({...loanForm,overdue_balance:e.target.value})}/></label>
-            <label>সর্বশেষ কিস্তি নম্বর *<input type="number" min="0" step="1" required value={loanForm.last_installment_no} onChange={e=>setLoanForm({...loanForm,last_installment_no:e.target.value})}/></label>
+            <label>সর্বশেষ কিস্তি নম্বর *<input type="number" min="0" max="46" step="1" required value={loanForm.last_installment_no} onChange={e=>setLoanForm({...loanForm,last_installment_no:e.target.value})}/></label>
+            <label>সর্বশেষ কিস্তির তারিখ {Number(loanForm.last_installment_no)>0?'*':''}<input type="date" required={Number(loanForm.last_installment_no)>0} value={loanForm.last_installment_date} onChange={e=>setLoanForm({...loanForm,last_installment_date:e.target.value})}/></label>
             <label>রেফারেন্স নম্বর<input value={loanForm.reference_no} onChange={e=>setLoanForm({...loanForm,reference_no:e.target.value})}/></label>
             <label>মন্তব্য<input value={loanForm.notes} onChange={e=>setLoanForm({...loanForm,notes:e.target.value})}/></label>
           </div>
-          <p className="muted">বর্তমান অবশিষ্ট স্থিতি: <b>{money(Math.max(0,Number(loanForm.principal_amount||0)+Number(loanForm.service_charge_amount||0)-Number(loanForm.amount_repaid_to_date||0)))}</b></p>
+          <p className="muted">মোট অবশিষ্ট ঋণ স্থিতি: <b>{money(Math.max(0,Number(loanForm.principal_amount||0)+Number(loanForm.service_charge_amount||0)-Number(loanForm.amount_repaid_to_date||0)))}</b> · খেলাপী/ডিউ বাদে পরবর্তী আদায়যোগ্য: <b>{money(Math.max(0,Number(loanForm.principal_amount||0)+Number(loanForm.service_charge_amount||0)-Number(loanForm.amount_repaid_to_date||0)-Number(loanForm.overdue_balance||0)))}</b></p>
+          <p className="muted">পরবর্তী কিস্তির তারিখ (স্বয়ংক্রিয়): <b>{(()=>{const n=Number(loanForm.last_installment_no);if(!selectedSamity||n>=46||loanForm.current_status!=='active')return '—';try{const closed=[...openingClosures];const relevant=openingHolidays.filter(h=>h.is_active&&(h.scope==='organization'||(h.scope==='branch'&&h.branch_id===selectedSamity.branch_id)||(h.scope==='samity'&&h.samity_id===selectedSamity.id)));for(const h of relevant){const d=new Date(h.date_from+'T12:00:00'),e=new Date(h.date_to+'T12:00:00');while(d<=e){closed.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')).join('-'));d.setDate(d.getDate()+1);}}if(n===0)return calculateFirstInstallmentDate(loanForm.disbursement_date,Number(selectedSamity.meeting_day),closed);const d=new Date(loanForm.last_installment_date+'T12:00:00');d.setDate(d.getDate()+7);while(closed.includes([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate())].join('-')))d.setDate(d.getDate()+7);return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate())].join('-');}catch{return 'তারিখ নির্ধারণের জন্য তথ্য অসম্পূর্ণ';}})()}</b></p>
           {loanNotice&&<div className="notice">{loanNotice}</div>}
           <div className="form-actions"><button disabled={loanBusy}>{loanBusy?'সংরক্ষণ হচ্ছে...':editingLoanId?'ঋণের তথ্য হালনাগাদ':'ঋণের তথ্য সংরক্ষণ'}</button>{editingLoanId&&<button type="button" className="secondary" onClick={resetLoanForm}>বাতিল</button>}</div>
         </form>}
         <h3>সংরক্ষিত প্রারম্ভিক ঋণ</h3>
-        <div className="table-wrap"><table><thead><tr><th>ঋণ নম্বর</th><th>বিতরণের তারিখ</th><th>প্রকল্প</th><th>দফা</th><th>আসল</th><th>সেবামূল্য</th><th>এ পর্যন্ত আদায়</th><th>বর্তমান অবশিষ্ট</th><th>বকেয়া</th><th>অবস্থা</th><th>শেষ কিস্তি</th><th>কাজ</th></tr></thead><tbody>
-          {openingLoans.map(loan=><tr key={loan.id}><td>{loan.loan_no}</td><td>{loan.disbursement_date}</td><td>{loan.project_name}</td><td>{loan.loan_cycle}</td><td>{money(Number(loan.principal_amount))}</td><td>{money(Number(loan.service_charge_amount))}</td><td>{money(Number(loan.amount_repaid_to_date))}</td><td>{money(Number(loan.outstanding_balance))}</td><td>{money(Number(loan.overdue_balance))}</td><td>{loan.current_status==='active'?'চলমান':loan.current_status==='closed'?'বন্ধ':'অবলোপন'}</td><td>{loan.last_installment_no}</td><td>{canDo('opening_data','update')&&<button type="button" className="secondary" onClick={()=>editOpeningLoan(loan)}>সম্পাদনা</button>}</td></tr>)}
-          {openingLoans.length===0&&<tr><td colSpan={12} className="empty">এখনও কোনো প্রারম্ভিক ঋণ এন্ট্রি করা হয়নি।</td></tr>}
+        <div className="table-wrap"><table><thead><tr><th>ঋণ নম্বর</th><th>বিতরণের তারিখ</th><th>প্রকল্প</th><th>দফা</th><th>আসল</th><th>সেবামূল্য</th><th>এ পর্যন্ত আদায়</th><th>বর্তমান অবশিষ্ট</th><th>বকেয়া</th><th>অবস্থা</th><th>শেষ কিস্তি</th><th>শেষ কিস্তির তারিখ</th><th>পরবর্তী কিস্তি</th><th>পরবর্তী আদায়যোগ্য</th><th>কাজ</th></tr></thead><tbody>
+          {openingLoans.map(loan=><tr key={loan.id}><td>{loan.loan_no}</td><td>{loan.disbursement_date}</td><td>{loan.project_name}</td><td>{loan.loan_cycle}</td><td>{money(Number(loan.principal_amount))}</td><td>{money(Number(loan.service_charge_amount))}</td><td>{money(Number(loan.amount_repaid_to_date))}</td><td>{money(Number(loan.outstanding_balance))}</td><td>{money(Number(loan.overdue_balance))}</td><td>{loan.current_status==='active'?'চলমান':loan.current_status==='closed'?'বন্ধ':'অবলোপন'}</td><td>{loan.last_installment_no}</td><td>{loan.last_installment_date||'—'}</td><td>{loan.next_installment_date||'—'}</td><td>{money(Number(loan.next_collectible_balance||0))}</td><td>{canDo('opening_data','update')&&<button type="button" className="secondary" onClick={()=>editOpeningLoan(loan)}>সম্পাদনা</button>}</td></tr>)}
+          {openingLoans.length===0&&<tr><td colSpan={15} className="empty">এখনও কোনো প্রারম্ভিক ঋণ এন্ট্রি করা হয়নি।</td></tr>}
         </tbody></table></div>
       </section>}
       {!openingOnly && canCreate && <form className="employee-form" onSubmit={saveTransaction}>
