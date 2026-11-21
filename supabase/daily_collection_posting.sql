@@ -96,7 +96,7 @@ create policy collection_month_closure_read on public.collection_month_closures
 for select to authenticated using (public.can_access_branch(branch_id));
 
 create or replace function public.can_post_collection(p_samity_id uuid,p_collection_date date)
-returns boolean language plpgsql stable security definer set search_path=public as $
+returns boolean language plpgsql stable security definer set search_path=public as $$
 declare v_role text; v_branch uuid; v_employee uuid;
 begin
   select role::text, branch_id, employee_id into v_role, v_branch, v_employee
@@ -270,7 +270,7 @@ end $$;
 grant execute on function public.close_daily_collection(uuid) to authenticated;
 
 create or replace function public.reopen_daily_collection(p_sheet_id uuid,p_reason text)
-returns void language plpgsql security definer set search_path=public as $
+returns void language plpgsql security definer set search_path=public as $$
 declare v_sheet public.daily_collection_sheets%rowtype; v_role text;
 begin
  select * into v_sheet from public.daily_collection_sheets where id=p_sheet_id for update;
@@ -292,7 +292,7 @@ begin
  values(p_sheet_id,trim(p_reason),auth.uid());
  update public.daily_collection_sheets set status='posted',closed_by=null,closed_at=null,
    updated_by=auth.uid(),updated_at=now() where id=p_sheet_id;
-end $;
+end $$;
 grant execute on function public.reopen_daily_collection(uuid,text) to authenticated;
 
 create or replace function public.close_collection_month(p_branch_id uuid,p_month_start date)
