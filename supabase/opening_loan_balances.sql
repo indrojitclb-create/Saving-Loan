@@ -119,3 +119,53 @@ using (
     or public.has_module_permission('opening_data','update')
   )
 );
+
+
+-- Repayment schedule continuation for opening loans.
+alter table public.member_opening_loans
+  add column if not exists last_installment_date date,
+  add column if not exists next_installment_date date,
+  add column if not exists next_collectible_balance numeric(14,2) not null default 0;
+
+create table if not exists public.member_opening_loan_installment_schedule (
+  id uuid primary key default gen_random_uuid(),
+  opening_loan_id uuid not null references public.member_opening_loans(id) on delete cascade,
+  installment_no integer not null check (installment_no between 1 and 46),
+  due_date date not null,
+  principal_due numeric(14,2) not null default 0 check (principal_due >= 0),
+  service_charge_due numeric(14,2) not null default 0 check (service_charge_due >= 0),
+  total_due numeric(14,2) not null check (total_due >= 0),
+  status text not null default 'due' check (status in ('due','partial','paid','overdue')),
+  created_at timestamptz not null default now(),
+  unique(opening_loan_id, installment_no),
+  unique(opening_loan_id, due_date)
+);
+create index if not exists opening_loan_schedule_due_idx
+  on public.member_opening_loan_installment_schedule(due_date,status);
+alter table public.member_opening_loan_installment_schedule enable row level security;
+
+drop policy if exists opening_loan_schedule_read on public.member_opening_loan_installment_schedule;
+create policy opening_loan_schedule_read on public.member_opening_loan_installment_schedule
+for select to authenticated using (
+  exists(select 1 from public.member_opening_loans l
+    where l.id=opening_loan_id and public.can_access_member(l.member_id))
+  and (public.is_admin_or_coadmin()
+    or public.has_module_permission('opening_data','view')
+    or public.has_module_permission('opening_data','create')
+    or public.has_module_permission('opening_data','update'))
+);
+drop policy if exists opening_loan_schedule_insert on public.member_opening_loan_installment_schedule;
+create policy opening_loan_schedule_insert on public.member_opening_loan_installment_schedule
+for insert to authenticated with check (
+  exists(select 1 from public.member_opening_loans l
+    where l.id=opening_loan_id and public.can_access_member(l.member_id))
+  and (public.is_admin_or_coadmin() or public.has_module_permission('opening_data','create'))
+);
+drop policy if exists opening_loan_schedule_delete on public.member_opening_loan_installment_schedule;
+create policy opening_loan_schedule_delete on public.member_opening_loan_installment_schedule
+for delete to authenticated using (
+  exists(select 1 from public.member_opening_loans l
+    where l.id=opening_loan_id and public.can_access_member(l.member_id))
+  and (public.is_admin_or_coadmin() or public.has_module_permission('opening_data','update'))
+);
+
