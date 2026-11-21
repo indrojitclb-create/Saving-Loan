@@ -296,6 +296,7 @@ begin
          update public.member_opening_loans set
            amount_repaid_to_date=amount_repaid_to_date+v_left,
            overdue_balance=greatest(0,overdue_balance-v_left),
+           next_collectible_balance=greatest(0,outstanding_balance-v_left-greatest(0,overdue_balance-v_left)),
            updated_by=auth.uid(),updated_at=now()
          where id=v_opening_loan;
          update public.member_opening_loan_installment_schedule set
