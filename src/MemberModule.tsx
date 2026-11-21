@@ -164,7 +164,7 @@ export default function MemberModule({branches,samities,divisions,districts,upaz
       }
       const {error:versionError}=await db.from('optional_savings_product_versions').insert({
         product_id:productId,version_no:versionNo,installment_amount:null,term_months:term,
-        interest_rate:rate,effective_from:schemeForm.effective_from,conditions:{monthly_due_day:14,late_fee_amount:10,late_fee_trigger:'after_due_day'},
+        interest_rate:rate,effective_from:schemeForm.effective_from,conditions:{monthly_due_day:14,late_fee_trigger:'policy_verification_required'},
         calculation_method:'pending_policy_mapping',created_by:userData.user?.id,...fileMeta
       });
       if(versionError)throw versionError;
