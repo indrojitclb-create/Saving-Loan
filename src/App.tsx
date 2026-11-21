@@ -7,7 +7,7 @@ import SavingsModule from './SavingsModule';
 import HolidayModule from './HolidayModule';
 import { configured, configurationError, supabase } from './lib/supabase';
 
-type ModuleKey = 'dashboard' | 'employees' | 'users' | 'savings' | 'collection' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings' | 'holiday_calendar';
+type ModuleKey = 'opening_data' | 'dashboard' | 'employees' | 'users' | 'savings' | 'collection' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings' | 'holiday_calendar';
 type Employee = {
   id: string; employee_code: string; full_name: string; phone: string | null;
   email: string | null; branch_id: string | null; designation: string | null;
@@ -26,6 +26,7 @@ const menu: { key: ModuleKey; label: string; desc: string }[] = [
   { key: 'employees', label: 'Employee List', desc: 'কর্মী ও শাখা ব্যবস্থাপনা' },
   { key: 'users', label: 'User & Permission', desc: 'ইউজার, ভূমিকা ও অনুমতি' },
   { key: 'savings', label: 'Savings', desc: 'সঞ্চয় জমা ও উত্তোলন' },
+  { key: 'opening_data', label: 'Opening Data Input', desc: 'সদস্যের প্রারম্ভিক সঞ্চয় স্থিতি এন্ট্রি' },
   { key: 'collection', label: 'সমিতিভিত্তিক আদায় সিট', desc: 'একই সিটে GS, LTS-New ও ঋণের মাসিক আদায়' },
   { key: 'loans', label: 'ঋণ ব্যবস্থাপনা ও আদায় সিট', desc: 'ঋণ বিতরণ, ৪৬ সপ্তাহের কিস্তি ও সমিতিভিত্তিক আদায়' },
   { key: 'reports', label: 'Reports', desc: 'দৈনিক, মাসিক ও বার্ষিক রিপোর্ট' },
