@@ -717,6 +717,7 @@ export default function App() {
       </section>}
       {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} fullName={fullName} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
       {active === 'savings' && <SavingsModule samities={samities} canDo={canDo} />}
+      {active === 'opening_data' && <SavingsModule samities={samities} canDo={canDo} openingOnly />}
       {active === 'loans' && <LoanModule samities={samities} canDo={canDo} />}
       {active === 'collection' && <CollectionModule samities={samities} canDo={canDo} />}
       {active === 'holiday_calendar' && <HolidayModule branches={branches} samities={samities} canDo={canDo} />}
