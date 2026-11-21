@@ -232,7 +232,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     {dailyStatus==='posted'&&canCorrect&&<label>সংশোধনের কারণ *<input value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} placeholder="কেন সংশোধন করছেন লিখুন"/></label>}
     {dailyStatus==='closed'&&canCorrect&&<label>Day Reopen-এর কারণ *<input value={dayReopenReason} onChange={e=>setDayReopenReason(e.target.value)}/></label>}
     <div className="form-actions">
-      <button disabled={dailyBusy||!samityId||!dailyRows.length||dailyStatus==='closed'||(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim()))} onClick={()=>saveDaily('draft')}>খসড়া সংরক্ষণ</button>
+      <button disabled={dailyBusy||!samityId||!dailyRows.length||dailyStatus==='closed'||dailyStatus==='posted'||(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim()))} onClick={()=>saveDaily('draft')}>খসড়া সংরক্ষণ</button>
       <button disabled={dailyBusy||!samityId||!dailyRows.length||dailyStatus==='closed'||(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim()))} onClick={()=>saveDaily('post')}>{dailyStatus==='posted'?'সংশোধন সংরক্ষণ ও পোস্ট':'আদায় পোস্ট করুন'}</button>
       <button className="secondary" disabled={dailyBusy||dailyStatus!=='posted'||!canCorrect} onClick={closeDay}>Day End</button>
       {dailyStatus==='closed'&&canCorrect&&<button className="secondary" disabled={dailyBusy||!dayReopenReason.trim()} onClick={reopenDay}>Day Reopen</button>}
