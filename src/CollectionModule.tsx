@@ -216,7 +216,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{dailySamities.map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
     </div>
     {samityId&&<><div className="panel"><b>অবস্থা:</b> {dailyStatus==='closed'?'Day End সম্পন্ন':dailyStatus==='posted'?'Posted':dailyStatus==='draft'?'Draft':'এখনও পোস্ট হয়নি'}　<b>সভার দিন:</b> {['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][selectedSamity?.meeting_day]||'—'}<p className="muted">শুধু নির্বাচিত তারিখে সভা আছে এমন সমিতিই তালিকায় দেখানো হয়।</p></div>
-    {dailyRows.length>0&&<div className="table-wrap"><table><thead><tr><th>SL</th><th>সদস্য কোড ও নাম</th><th>GS জমা</th><th>GS উত্তোলন</th><th>LTS-New জমা</th><th>ঐচ্ছিক সঞ্চয় স্কিম</th><th>ঐচ্ছিক জমা</th><th>ঋণ হিসাব</th><th>ঋণ আদায়</th><th>মন্তব্য</th></tr></thead><tbody>
+    {dailyRows.length>0 ? <div className="table-wrap"><table><thead><tr><th>SL</th><th>সদস্য কোড ও নাম</th><th>GS জমা</th><th>GS উত্তোলন</th><th>LTS-New জমা</th><th>ঐচ্ছিক সঞ্চয় স্কিম</th><th>ঐচ্ছিক জমা</th><th>ঋণ হিসাব</th><th>ঋণ আদায়</th><th>মন্তব্য</th></tr></thead><tbody>
     {dailyRows.map((r,i)=>{
       const memberLoans=loans.filter(l=>l.member_id===r.member_id&&l.status==='active');
       const memberOptional=enrollments.filter(e=>e.member_id===r.member_id&&e.savings_type==='optional');
