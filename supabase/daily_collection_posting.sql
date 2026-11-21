@@ -316,11 +316,15 @@ begin
            amount_repaid_to_date=amount_repaid_to_date+v_left,
            overdue_balance=greatest(0,overdue_balance-v_left),
            next_collectible_balance=greatest(0,outstanding_balance-v_left-greatest(0,overdue_balance-v_left)),
+           current_status=case when amount_repaid_to_date+v_left>=principal_amount+service_charge_amount then 'closed' else current_status end,
            updated_by=auth.uid(),updated_at=now()
          where id=v_opening_loan;
-         update public.member_opening_loan_installment_schedule set
-           status=case when total_due<=v_left then 'paid' else 'partial' end
-         where opening_loan_id=v_opening_loan and installment_no=(
+         update public.member_opening_loan_installment_schedule s set
+           status=case when coalesce((
+             select sum(t.amount) from public.member_opening_loan_transactions t
+             where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no
+           ),0)>=s.total_due then 'paid' else 'partial' end
+         where s.opening_loan_id=v_opening_loan and s.installment_no=(
            select min(installment_no) from public.member_opening_loan_installment_schedule
            where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date);
        else
