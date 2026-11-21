@@ -39,8 +39,15 @@ begin
     raise exception 'লেনদেনের পরিমাণ শূন্যের বেশি হতে হবে';
   end if;
 
-  if new.savings_category not in ('GS','LTS-New','Optional') then
+  if new.savings_category is null or new.savings_category not in ('GS','LTS-New','Optional') then
     raise exception 'সঞ্চয়ের ধরন সঠিক নয়';
+  end if;
+
+  if new.savings_category = 'Optional' and not exists (
+    select 1 from public.member_savings_enrollments e
+    where e.member_id = new.member_id and e.savings_type = 'optional'
+  ) then
+    raise exception 'এই সদস্য Optional Savings-এ অন্তর্ভুক্ত নন';
   end if;
 
   if new.transaction_type not in ('deposit','withdrawal') then
