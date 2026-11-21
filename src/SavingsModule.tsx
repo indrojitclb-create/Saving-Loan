@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 
+type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string };
+
 type Props = {
   samities: any[];
   canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean;
@@ -24,6 +26,7 @@ export default function SavingsModule({ samities, canDo }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [memberId, setMemberId] = useState('');
   const [transactions, setTransactions] = useState<Tx[]>([]);
+  const [opening, setOpening] = useState<OpeningBalance | null>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [category, setCategory] = useState<'GS'|'LTS-New'|'Optional'>('GS');
   const [transactionType, setTransactionType] = useState<'deposit'|'withdrawal'>('deposit');
@@ -63,23 +66,27 @@ export default function SavingsModule({ samities, canDo }: Props) {
     (async () => {
       if (!supabase || !memberId) {
         setTransactions([]);
+        setOpening(null);
         setEnrollments([]);
         return;
       }
       setLoading(true);
-      const [txResult, enrollmentResult] = await Promise.all([
+      const [txResult, enrollmentResult, openingResult] = await Promise.all([
         supabase.from('savings_transactions')
           .select('id,member_id,transaction_date,transaction_type,amount,savings_category,reference_no,notes')
           .eq('member_id', memberId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false }),
         supabase.from('member_savings_enrollments')
           .select('id,savings_type,amount,term_months,product_name_snapshot')
           .eq('member_id', memberId),
+        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date').eq('member_id',memberId).maybeSingle(),
       ]);
       if (!live) return;
       if (txResult.error) setNotice('সঞ্চয় লেনদেন পড়া যায়নি: ' + txResult.error.message);
       else setTransactions((txResult.data || []) as Tx[]);
       if (enrollmentResult.error) setNotice('সঞ্চয় সংযুক্তির তথ্য পড়া যায়নি: ' + enrollmentResult.error.message);
       else setEnrollments(enrollmentResult.data || []);
+      if (openingResult.error) setNotice('Opening Balance পড়া যায়নি: ' + openingResult.error.message);
+      else setOpening(openingResult.data || null);
       setLoading(false);
     })();
     return () => { live = false; };
@@ -88,13 +95,13 @@ export default function SavingsModule({ samities, canDo }: Props) {
   const selectedMember = members.find(m => m.id === memberId);
   const samity = samities.find(s => s.id === selectedMember?.samity_id);
   const balances = useMemo(() => {
-    const result: Record<string, number> = { GS: 0, 'LTS-New': 0, Optional: 0 };
+    const result: Record<string, number> = { GS: Number(opening?.gs_balance||0), 'LTS-New': Number(opening?.lts_new_balance||0), Optional: Number(opening?.optional_balance||0) };
     transactions.forEach(tx => {
       result[tx.savings_category] = (result[tx.savings_category] || 0) +
         (tx.transaction_type === 'deposit' ? 1 : -1) * Number(tx.amount || 0);
     });
     return result;
-  }, [transactions]);
+  }, [transactions, opening]);
   const optionalEnrolled = enrollments.some(x => x.savings_type === 'optional');
   const visibleMembers = members.filter(m => {
     const term = search.trim().toLowerCase();
