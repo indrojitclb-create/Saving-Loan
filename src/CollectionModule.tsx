@@ -21,6 +21,7 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [notice,setNotice]=useState('');
   const [dailyDate,setDailyDate]=useState(dateText(new Date()));
   const [dailyRows,setDailyRows]=useState<any[]>([]);
+  const [monthlyView,setMonthlyView]=useState<'with_data'|'due_only'>('with_data');
   const [dailyStatus,setDailyStatus]=useState('');
   const [dailySheetId,setDailySheetId]=useState('');
   const [correctionReason,setCorrectionReason]=useState('');
@@ -61,7 +62,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     else setDailyRows(members.map(m=>{
       const activeLoans=loans.filter(l=>l.member_id===m.id&&l.status==='active');
       const optional=enrollments.filter(e=>e.member_id===m.id&&e.savings_type==='optional');
-      return {member_id:m.id,member_code:m.member_code,member_name:m.full_name,gs_deposit:0,gs_withdrawal:0,lts_new:0,optional_savings:0,optional_enrollment_id:optional[0]?.id||'',loan_id:activeLoans[0]?.id||'',loan_paid:0,remarks:''};
+      return {member_id:m.id,member_code:m.member_code,member_name:m.full_name,is_present:false,gs_deposit:0,gs_withdrawal:0,lts_new:0,optional_savings:0,optional_enrollment_id:optional[0]?.id||'',loan_id:activeLoans[0]?.id||'',loan_paid:0,remarks:''};
     }));
   })();return()=>{live=false}},[samityId,dailyDate,members,loans,enrollments]);
   function updateDailyRow(index:number,key:string,value:any){
@@ -216,19 +217,19 @@ export default function CollectionModule({samities,canDo}:Props) {
       <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{dailySamities.map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
     </div>
     {samityId&&<><div className="panel"><b>অবস্থা:</b> {dailyStatus==='closed'?'Day End সম্পন্ন':dailyStatus==='posted'?'Posted':dailyStatus==='draft'?'Draft':'এখনও পোস্ট হয়নি'}　<b>সভার দিন:</b> {['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][selectedSamity?.meeting_day]||'—'}<p className="muted">শুধু নির্বাচিত তারিখে সভা আছে এমন সমিতিই তালিকায় দেখানো হয়।</p></div>
-    {dailyRows.length>0 ? <div className="table-wrap"><table><thead><tr><th>SL</th><th>সদস্য কোড ও নাম</th><th>GS জমা</th><th>GS উত্তোলন</th><th>LTS-New জমা</th><th>ঐচ্ছিক সঞ্চয় স্কিম</th><th>ঐচ্ছিক জমা</th><th>ঋণ হিসাব</th><th>ঋণ আদায়</th><th>মন্তব্য</th></tr></thead><tbody>
+    {dailyRows.length>0 ? <div className="table-wrap"><table><thead><tr><th>SL</th><th>সদস্য কোড ও নাম</th><th>উপস্থিত</th><th>GS জমা</th><th>GS উত্তোলন</th><th>LTS-New জমা</th>{Number(dailyDate.slice(8,10))<=14&&<><th>ঐচ্ছিক সঞ্চয় স্কিম</th><th>ঐচ্ছিক জমা</th></>}<th>ঋণ হিসাব</th><th>ঋণ আদায়</th><th>মন্তব্য</th></tr></thead><tbody>
     {dailyRows.map((r,i)=>{
       const memberLoans=loans.filter(l=>l.member_id===r.member_id&&l.status==='active');
       const memberOptional=enrollments.filter(e=>e.member_id===r.member_id&&e.savings_type==='optional');
       const locked=dailyStatus==='closed'||(dailyStatus==='posted'&&!canCorrect);
-      return <tr key={r.member_id}><td>{i+1}</td><td>{r.member_code}<br/>{r.member_name}</td>
+      return <tr key={r.member_id}><td>{i+1}</td><td>{r.member_code}<br/>{r.member_name}</td><td><input type="checkbox" checked={Boolean(r.is_present)} disabled={locked} onChange={e=>updateDailyRow(i,'is_present',e.target.checked)}/></td>
       {['gs_deposit','gs_withdrawal','lts_new'].map(k=><td key={k}><input type="number" min="0" step="0.01" disabled={locked} value={r[k]||0} onChange={e=>updateDailyRow(i,k,Number(e.target.value))}/></td>)}
-      <td><select disabled={locked||!memberOptional.length} value={r.optional_enrollment_id||''} onChange={e=>updateDailyRow(i,'optional_enrollment_id',e.target.value)}><option value="">স্কিম নির্বাচন</option>{memberOptional.map(x=><option key={x.id} value={x.id}>{x.product_name_snapshot||'ঐচ্ছিক স্কিম'}</option>)}</select></td>
-      <td><input type="number" min="0" step="0.01" disabled={locked||!memberOptional.length} value={r.optional_savings||0} onChange={e=>updateDailyRow(i,'optional_savings',Number(e.target.value))}/></td>
+      {Number(dailyDate.slice(8,10))<=14&&<><td><select disabled={locked||!memberOptional.length} value={r.optional_enrollment_id||''} onChange={e=>updateDailyRow(i,'optional_enrollment_id',e.target.value)}><option value="">স্কিম নির্বাচন</option>{memberOptional.map(x=><option key={x.id} value={x.id}>{x.product_name_snapshot||'ঐচ্ছিক স্কিম'}</option>)}</select></td>
+      <td><input type="number" min="0" step="0.01" disabled={locked||!memberOptional.length} value={r.optional_savings||0} onChange={e=>updateDailyRow(i,'optional_savings',Number(e.target.value))}/></td></>}
       <td><select disabled={locked||!memberLoans.length} value={r.loan_id||''} onChange={e=>updateDailyRow(i,'loan_id',e.target.value)}><option value="">ঋণ নির্বাচন</option>{memberLoans.map(x=><option key={x.id} value={x.id}>{x.loan_no}</option>)}</select></td>
       <td><input type="number" min="0" step="0.01" disabled={locked||!memberLoans.length} value={r.loan_paid||0} onChange={e=>updateDailyRow(i,'loan_paid',Number(e.target.value))}/></td>
       <td><input disabled={locked} value={r.remarks||''} onChange={e=>updateDailyRow(i,'remarks',e.target.value)}/></td></tr>;
-    })}</tbody></table></div>:<p className="muted">{loading?'সদস্য তালিকা লোড হচ্ছে...':'এই সমিতিতে সক্রিয় সদস্য পাওয়া যায়নি।'}</p>}
+    })}</tbody><tfoot><tr><th colSpan={3}>সর্বমোট</th>{['gs_deposit','gs_withdrawal','lts_new'].map(k=><th key={k}>{money(dailyRows.reduce((s,r)=>s+Number(r[k]||0),0))}</th>)}{Number(dailyDate.slice(8,10))<=14&&<><th>—</th><th>{money(dailyRows.reduce((s,r)=>s+Number(r.optional_savings||0),0))}</th></>}<th>—</th><th>{money(dailyRows.reduce((s,r)=>s+Number(r.loan_paid||0),0))}</th><th>—</th></tr></tfoot></table></div>:<p className="muted">{loading?'সদস্য তালিকা লোড হচ্ছে...':'এই সমিতিতে সক্রিয় সদস্য পাওয়া যায়নি।'}</p>}
     {dailyStatus==='posted'&&canCorrect&&<label>সংশোধনের কারণ *<input value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} placeholder="কেন সংশোধন করছেন লিখুন"/></label>}
     {dailyStatus==='closed'&&canCorrect&&<label>Day Reopen-এর কারণ *<input value={dayReopenReason} onChange={e=>setDayReopenReason(e.target.value)}/></label>}
     <div className="form-actions">
@@ -249,7 +250,8 @@ export default function CollectionModule({samities,canDo}:Props) {
       <button className="secondary" disabled={dailyBusy||!canCorrect||!selectedSamity?.branch_id||!monthReopenReason.trim()} onClick={reopenMonth}>Month Reopen</button>
     </div>
     <div className="divider"></div>
-    <div className="section-head"><div><p className="eyebrow">MONTHLY REPORT</p><h2>সমিতিভিত্তিক মাসিক আদায় রিপোর্ট</h2><p>সঞ্চয় ও ঋণ আদায়ের বিদ্যমান রিপোর্ট।</p></div></div>
+    <div className="section-head"><div><p className="eyebrow">MONTHLY COLLECTION SHEET</p><h2>সমিতিভিত্তিক মাসিক আদায় সিট</h2><p>ডাটাসহ: পোস্ট হওয়া আদায়। ডাটা ছাড়া: আদায়যোগ্য হিসাব।</p></div></div>
+    <div className="form-grid"><label>সিটের ধরন<select value={monthlyView} onChange={e=>setMonthlyView(e.target.value as 'with_data'|'due_only')}><option value="with_data">ডাটাসহ — প্রকৃত আদায়</option><option value="due_only">ডাটা ছাড়া — আদায়যোগ্য</option></select></label></div>
     <div className="form-grid">
       <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{visibleSamities.map(s=><option key={s.id} value={s.id}>{s.samity_code} — {s.samity_name}</option>)}</select></label>
       <label>মাস *<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
@@ -259,7 +261,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     {loading?<div className="panel">তথ্য লোড হচ্ছে...</div>:<div className="table-wrap"><table><thead>
       <tr><th rowSpan={2}>SL</th><th rowSpan={2}>Member Code</th><th rowSpan={2}>সদস্যের নাম</th><th rowSpan={2}>GS Opening</th><th rowSpan={2}>LTS-New Opening</th><th rowSpan={2}>ঋণের Opening</th>
       {meetingDates.map((d,i)=><th key={d} colSpan={4}>{i+1}ম সপ্তাহ · {d}</th>)}<th colSpan={4}>মাসের মোট</th><th colSpan={3}>Closing Balance</th></tr>
-      <tr>{meetingDates.flatMap(d=>[<th key={d+'g'}>GS</th>,<th key={d+'l'}>LTS-New</th>,<th key={d+'due'}>Loan Due</th>,<th key={d+'loan'}>Loan Paid</th>])}<th>GS</th><th>LTS-New</th><th>Loan Due</th><th>Loan Paid</th><th>GS</th><th>LTS-New</th><th>Loan</th></tr>
+      <tr>{meetingDates.flatMap(d=>[<th key={d+'g'}>GS</th>,<th key={d+'l'}>LTS-New</th>,<th key={d+'due'}>Loan Due</th>,<th key={d+'loan'}>Loan Paid</th>])}<th>GS</th><th>LTS-New</th><th>Loan Due</th><th>{monthlyView==='with_data'?'Loan Paid':'Loan আদায়যোগ্য'}</th><th>GS</th><th>LTS-New</th><th>Loan</th></tr>
     </thead><tbody>{rows.map((r,i)=><tr key={r.id}><td>{i+1}</td><td>{r.member_code}</td><td>{r.full_name}</td><td>{money(r.gsOpen)}</td><td>{money(r.ltsOpen)}</td><td>{money(r.loanOpen)} </td>
       {meetingDates.flatMap((d,j)=>[<td key={d+'g'}>{money(r.gsBy[j])}</td>,<td key={d+'l'}>{money(r.ltsBy[j])}</td>,<td key={d+'due'}>{money(r.loanDueBy[j])}</td>,<td key={d+'loan'}>{money(r.loanBy[j])}</td>])}
       <td>{money(r.gsTotal)}</td><td>{money(r.ltsTotal)}</td><td>{money(r.loanDueTotal)}</td><td>{money(r.loanTotal)}</td><td>{money(r.gsClose)}</td><td>{money(r.ltsClose)}</td><td>{money(r.loanClose)}</td></tr>)}
