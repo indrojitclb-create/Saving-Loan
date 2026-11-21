@@ -57,6 +57,9 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
 
+  const selectedMember = members.find(m => m.id === memberId);
+  const selectedSamity = samities.find(m => m.id === selectedMember?.samity_id);
+
   useEffect(() => {
     let live = true;
     (async () => {
@@ -144,8 +147,6 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     setOpeningNotice('');
   }, [opening, memberId]);
 
-  const selectedMember = members.find(m => m.id === memberId);
-  const selectedSamity = samities.find(m => m.id === selectedMember?.samity_id);
   const samity = samities.find(s => s.id === selectedMember?.samity_id);
   const balances = useMemo(() => {
     const result: Record<string, number> = { GS: Number(opening?.gs_balance||0), 'LTS-New': Number(opening?.lts_new_balance||0), Optional: Number(opening?.optional_balance||0) };
@@ -266,7 +267,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     }
     if(loanForm.current_status==='closed'&&remainingBalance>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ করা যাবে না।');return;}
     setLoanBusy(true);
-    const payload={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
+    const payload:any={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
     const payloadWithDates={...payload,next_installment_date:nextInstallmentDate,next_collectible_balance:nextCollectibleBalance};
     const result=editingLoanId?await supabase.from('member_opening_loans').update(payloadWithDates).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payloadWithDates).select('id').single();
     setLoanBusy(false);
