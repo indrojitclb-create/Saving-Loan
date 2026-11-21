@@ -499,12 +499,17 @@ begin
         from public.savings_transactions t join public.members m on m.id=t.member_id
         where m.branch_id=p_branch_id and t.savings_category='Optional'
           and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'loan_outstanding',coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
-      coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
-        and t.transaction_date<(p_month_start+interval '1 month')),0)))
-      from public.loan_accounts a join public.members m on m.id=a.member_id
-      where m.branch_id=p_branch_id and a.disbursement_date<(p_month_start+interval '1 month')
-        and a.status='active'),0)
+    'loan_outstanding',
+      coalesce((select sum(l.outstanding_balance) from public.member_opening_loans l
+        join public.members m on m.id=l.member_id
+        where m.branch_id=p_branch_id and l.current_status='active'
+          and l.disbursement_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
+        coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
+          and t.transaction_date<(p_month_start+interval '1 month')),0)))
+        from public.loan_accounts a join public.members m on m.id=a.member_id
+        where m.branch_id=p_branch_id and a.disbursement_date<(p_month_start+interval '1 month')
+          and a.status='active'),0)
   ) into v_totals;
   insert into public.collection_month_closures(branch_id,month_start,totals,closed_by)
   values(p_branch_id,p_month_start,v_totals,auth.uid())
