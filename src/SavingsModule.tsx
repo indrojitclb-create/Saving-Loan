@@ -267,7 +267,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if(loanForm.current_status==='closed'&&remainingBalance>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ করা যাবে না।');return;}
     setLoanBusy(true);
     const payload={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
-    const payloadWithDates={...payload,next_installment_date:nextInstallmentDate};
+    const payloadWithDates={...payload,next_installment_date:nextInstallmentDate,next_collectible_balance:nextCollectibleBalance};
     const result=editingLoanId?await supabase.from('member_opening_loans').update(payloadWithDates).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payloadWithDates).select('id').single();
     setLoanBusy(false);
     if(result.error){setLoanNotice('ঋণের তথ্য সংরক্ষণ হয়নি: '+result.error.message);return;}
