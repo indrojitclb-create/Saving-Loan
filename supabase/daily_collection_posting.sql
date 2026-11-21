@@ -116,7 +116,10 @@ for select to authenticated using (exists(select 1 from public.daily_collection_
   where s.id=sheet_id and public.can_access_collection_samity(s.samity_id,s.collection_date)));
 drop policy if exists collection_month_closure_read on public.collection_month_closures;
 create policy collection_month_closure_read on public.collection_month_closures
-for select to authenticated using (public.can_access_branch(branch_id));
+for select to authenticated using (
+  public.current_app_role() in ('main_admin','co_admin','branch_manager','area_manager')
+  and public.can_access_branch(branch_id)
+);
 
 create or replace function public.can_post_collection(p_samity_id uuid,p_collection_date date)
 returns boolean language plpgsql stable security definer set search_path=public as $$
