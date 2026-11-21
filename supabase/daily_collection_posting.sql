@@ -1,5 +1,7 @@
 -- Daily collection posting, controlled corrections, Day End and Month End.
--- Apply after schema.sql, security.sql and samity_management.sql.
+-- Apply only after: schema.sql, security.sql, assistant_admin.sql, member_registration.sql,
+-- samity_management.sql, holiday_calendar.sql, loan_collection.sql,
+-- collection_sheet.sql and optional_savings_versions.sql.
 
 create table if not exists public.daily_collection_sheets (
   id uuid primary key default gen_random_uuid(),
