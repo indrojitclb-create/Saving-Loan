@@ -193,7 +193,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
           {categories.map(c=><div className="stat-card" key={c.value}><span>{c.label}</span><strong>{money(balances[c.value])}</strong></div>)}
         </div>
       </div>
-      {(openingOnly || canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
+      {openingOnly && (canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
         <h3>Opening Data Input — প্রারম্ভিক সঞ্চয় স্থিতি</h3>
         <p className="muted">প্রারম্ভিক GS, LTS-New ও Optional ব্যালেন্স আলাদা সংরক্ষণ হবে।</p>
         <div className="form-grid">
