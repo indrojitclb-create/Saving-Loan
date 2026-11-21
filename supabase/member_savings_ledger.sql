@@ -8,9 +8,19 @@ for select to authenticated
 using (
   public.can_access_member(id)
   and (
-    public.can_manage_module('savings','view')
-    or public.can_manage_module('savings','create')
+    public.has_module_permission('savings','view')
+    or public.has_module_permission('savings','create')
   )
+);
+
+
+-- Savings ledger reads require explicit Savings view/create permission and member scope.
+drop policy if exists savings_read_scope on public.savings_transactions;
+create policy savings_read_scope on public.savings_transactions
+for select to authenticated
+using (
+  public.can_access_member(member_id)
+  and (public.has_module_permission('savings','view') or public.has_module_permission('savings','create'))
 );
 
 -- Direct Savings screen entries require the Savings create permission.
@@ -19,7 +29,7 @@ create policy savings_insert_scope on public.savings_transactions
 for insert to authenticated
 with check (
   public.can_access_member(member_id)
-  and public.can_manage_module('savings','create')
+  and public.has_module_permission('savings','create')
   and created_by = (select auth.uid())
 );
 
