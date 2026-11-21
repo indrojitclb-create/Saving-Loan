@@ -21,7 +21,6 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [notice,setNotice]=useState('');
   const [dailyDate,setDailyDate]=useState(dateText(new Date()));
   const [dailyRows,setDailyRows]=useState<any[]>([]);
-  const [monthlyView,setMonthlyView]=useState<'with_data'|'due_only'>('with_data');
   const [dailyStatus,setDailyStatus]=useState('');
   const [dailySheetId,setDailySheetId]=useState('');
   const [correctionReason,setCorrectionReason]=useState('');
@@ -250,8 +249,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       <button className="secondary" disabled={dailyBusy||!canCorrect||!selectedSamity?.branch_id||!monthReopenReason.trim()} onClick={reopenMonth}>Month Reopen</button>
     </div>
     <div className="divider"></div>
-    <div className="section-head"><div><p className="eyebrow">MONTHLY COLLECTION SHEET</p><h2>সমিতিভিত্তিক মাসিক আদায় সিট</h2><p>ডাটাসহ: পোস্ট হওয়া আদায়। ডাটা ছাড়া: আদায়যোগ্য হিসাব।</p></div></div>
-    <div className="form-grid"><label>সিটের ধরন<select value={monthlyView} onChange={e=>setMonthlyView(e.target.value as 'with_data'|'due_only')}><option value="with_data">ডাটাসহ — প্রকৃত আদায়</option><option value="due_only">ডাটা ছাড়া — আদায়যোগ্য</option></select></label></div>
+    <div className="section-head"><div><p className="eyebrow">MONTHLY REPORT</p><h2>সমিতিভিত্তিক মাসিক আদায় রিপোর্ট</h2><p>সঞ্চয় ও ঋণ আদায়ের বিদ্যমান রিপোর্ট।</p></div></div>
     <div className="form-grid">
       <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{visibleSamities.map(s=><option key={s.id} value={s.id}>{s.samity_code} — {s.samity_name}</option>)}</select></label>
       <label>মাস *<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
@@ -261,7 +259,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     {loading?<div className="panel">তথ্য লোড হচ্ছে...</div>:<div className="table-wrap"><table><thead>
       <tr><th rowSpan={2}>SL</th><th rowSpan={2}>Member Code</th><th rowSpan={2}>সদস্যের নাম</th><th rowSpan={2}>GS Opening</th><th rowSpan={2}>LTS-New Opening</th><th rowSpan={2}>ঋণের Opening</th>
       {meetingDates.map((d,i)=><th key={d} colSpan={4}>{i+1}ম সপ্তাহ · {d}</th>)}<th colSpan={4}>মাসের মোট</th><th colSpan={3}>Closing Balance</th></tr>
-      <tr>{meetingDates.flatMap(d=>[<th key={d+'g'}>GS</th>,<th key={d+'l'}>LTS-New</th>,<th key={d+'due'}>Loan Due</th>,<th key={d+'loan'}>Loan Paid</th>])}<th>GS</th><th>LTS-New</th><th>Loan Due</th><th>{monthlyView==='with_data'?'Loan Paid':'Loan আদায়যোগ্য'}</th><th>GS</th><th>LTS-New</th><th>Loan</th></tr>
+      <tr>{meetingDates.flatMap(d=>[<th key={d+'g'}>GS</th>,<th key={d+'l'}>LTS-New</th>,<th key={d+'due'}>Loan Due</th>,<th key={d+'loan'}>Loan Paid</th>])}<th>GS</th><th>LTS-New</th><th>Loan Due</th><th>Loan Paid</th><th>GS</th><th>LTS-New</th><th>Loan</th></tr>
     </thead><tbody>{rows.map((r,i)=><tr key={r.id}><td>{i+1}</td><td>{r.member_code}</td><td>{r.full_name}</td><td>{money(r.gsOpen)}</td><td>{money(r.ltsOpen)}</td><td>{money(r.loanOpen)} </td>
       {meetingDates.flatMap((d,j)=>[<td key={d+'g'}>{money(r.gsBy[j])}</td>,<td key={d+'l'}>{money(r.ltsBy[j])}</td>,<td key={d+'due'}>{money(r.loanDueBy[j])}</td>,<td key={d+'loan'}>{money(r.loanBy[j])}</td>])}
       <td>{money(r.gsTotal)}</td><td>{money(r.ltsTotal)}</td><td>{money(r.loanDueTotal)}</td><td>{money(r.loanTotal)}</td><td>{money(r.gsClose)}</td><td>{money(r.ltsClose)}</td><td>{money(r.loanClose)}</td></tr>)}
