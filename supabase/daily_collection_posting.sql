@@ -46,7 +46,7 @@ create policy opening_loan_tx_read on public.member_opening_loan_transactions fo
 );
 drop policy if exists opening_loan_tx_insert on public.member_opening_loan_transactions;
 create policy opening_loan_tx_insert on public.member_opening_loan_transactions for insert to authenticated with check (
- created_by=(select auth.uid()) and exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
+ created_by=(select auth.uid()) and public.can_manage_module('collection','create') and exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
 );
 alter table public.loan_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
