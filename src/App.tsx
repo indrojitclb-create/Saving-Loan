@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import MemberModule from './MemberModule';
 import LoanModule from './LoanModule';
 import CollectionModule from './CollectionModule';
+import SavingsModule from './SavingsModule';
 import HolidayModule from './HolidayModule';
 import { configured, configurationError, supabase } from './lib/supabase';
 
@@ -714,10 +715,11 @@ export default function App() {
         </tbody></table></div>
       </section>}
       {(active === 'members' || active === 'optional_savings') && <MemberModule branches={branches} samities={samities} divisions={areaDivisions} districts={areaDistricts} upazilas={areaUpazilas} postOffices={areaPostOffices} villages={areaVillages} role={role} fullName={fullName} initialTab={active === 'optional_savings' ? 'schemes' : 'list'} canDo={canDo} />}
+      {active === 'savings' && <SavingsModule canDo={canDo} />}
       {active === 'loans' && <LoanModule samities={samities} canDo={canDo} />}
       {active === 'collection' && <CollectionModule samities={samities} canDo={canDo} />}
       {active === 'holiday_calendar' && <HolidayModule branches={branches} samities={samities} canDo={canDo} />}
-      {active !== 'dashboard' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active !== 'dashboard' && active !== 'savings' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
