@@ -22,6 +22,28 @@ create index if not exists daily_collection_branch_date_idx
 create index if not exists daily_collection_samity_date_idx
   on public.daily_collection_sheets(samity_id, collection_date desc);
 
+-- Each generated ledger row is traceable to the daily sheet that created it.
+alter table public.savings_transactions
+  add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+alter table public.loan_transactions
+  add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+alter table public.savings_transactions drop constraint if exists savings_transactions_savings_category_check;
+alter table public.savings_transactions add constraint savings_transactions_savings_category_check
+  check (savings_category in ('GS','LTS-New','Optional'));
+create index if not exists savings_tx_collection_sheet_idx
+  on public.savings_transactions(collection_sheet_id) where collection_sheet_id is not null;
+create index if not exists loan_tx_collection_sheet_idx
+  on public.loan_transactions(collection_sheet_id) where collection_sheet_id is not null;
+
+create table if not exists public.daily_collection_reopens (
+  id uuid primary key default gen_random_uuid(),
+  sheet_id uuid not null references public.daily_collection_sheets(id) on delete restrict,
+  reason text not null,
+  reopened_by uuid not null references public.profiles(id),
+  reopened_at timestamptz not null default now()
+);
+
+
 create table if not exists public.daily_collection_corrections (
   id uuid primary key default gen_random_uuid(),
   sheet_id uuid not null references public.daily_collection_sheets(id) on delete restrict,
@@ -51,6 +73,7 @@ create table if not exists public.collection_month_closures (
 
 alter table public.daily_collection_sheets enable row level security;
 alter table public.daily_collection_corrections enable row level security;
+alter table public.daily_collection_reopens enable row level security;
 alter table public.collection_month_closures enable row level security;
 
 drop policy if exists daily_collection_read on public.daily_collection_sheets;
@@ -62,6 +85,10 @@ for select to authenticated using (
   exists (select 1 from public.daily_collection_sheets s
           where s.id = sheet_id and public.can_access_branch(s.branch_id))
 );
+drop policy if exists daily_collection_reopens_read on public.daily_collection_reopens;
+create policy daily_collection_reopens_read on public.daily_collection_reopens
+for select to authenticated using (exists(select 1 from public.daily_collection_sheets s
+  where s.id=sheet_id and public.can_access_branch(s.branch_id)));
 drop policy if exists collection_month_closure_read on public.collection_month_closures;
 create policy collection_month_closure_read on public.collection_month_closures
 for select to authenticated using (public.can_access_branch(branch_id));
@@ -91,69 +118,135 @@ begin
 end $$;
 
 create or replace function public.save_daily_collection(
-  p_samity_id uuid, p_collection_date date, p_rows jsonb,
-  p_action text default 'post', p_reason text default null
+ p_samity_id uuid,p_collection_date date,p_rows jsonb,p_action text default 'post',p_reason text default null
 ) returns uuid language plpgsql security definer set search_path=public as $$
 declare
-  v_sheet public.daily_collection_sheets%rowtype;
-  v_branch uuid;
-  v_role text;
-  v_can_correct boolean;
+ v_sheet public.daily_collection_sheets%rowtype; v_branch uuid; v_role text; v_allowed boolean;
+ r jsonb; v_member uuid; v_amt numeric(14,2); v_left numeric(14,2);
+ sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid;
 begin
-  if auth.uid() is null or jsonb_typeof(p_rows)<>'array' then
-    raise exception 'সঠিক আদায় তথ্য দিন';
-  end if;
-  if not public.can_post_collection(p_samity_id,p_collection_date) then
-    raise exception 'এই সমিতিতে আদায় পোস্ট করার অনুমতি নেই';
-  end if;
-  select branch_id into v_branch from public.samities
-    where id=p_samity_id and status='active';
-  if v_branch is null then raise exception 'সমিতির শাখা পাওয়া যায়নি বা সমিতি সক্রিয় নয়'; end if;
-  if extract(dow from p_collection_date)::integer <> (select meeting_day from public.samities where id=p_samity_id) then
-    raise exception 'এই তারিখ সমিতির নির্ধারিত সভার দিন নয়';
-  end if;
-  if exists(select 1 from public.collection_month_closures
-    where branch_id=v_branch and month_start=date_trunc('month',p_collection_date)::date
-      and status='closed') then
-    raise exception 'এই মাসের হিসাব বন্ধ। সংশোধনের আগে Month Reopen প্রয়োজন';
-  end if;
+ if auth.uid() is null or jsonb_typeof(p_rows)<>'array' or p_action not in ('draft','post') then
+   raise exception 'সঠিক আদায় তথ্য দিন';
+ end if;
+ if not public.can_post_collection(p_samity_id,p_collection_date) then
+   raise exception 'এই সমিতিতে পোস্ট করার অনুমতি নেই';
+ end if;
+ select branch_id into v_branch from public.samities where id=p_samity_id and status='active';
+ if v_branch is null then raise exception 'সমিতি সক্রিয় নয় অথবা শাখা নির্ধারিত নেই'; end if;
+ if extract(dow from p_collection_date)::integer<>(select meeting_day from public.samities where id=p_samity_id) then
+   raise exception 'এই তারিখ সমিতির সভার দিন নয়';
+ end if;
+ if exists(select 1 from public.collection_month_closures where branch_id=v_branch
+   and month_start=date_trunc('month',p_collection_date)::date and status='closed') then
+   raise exception 'Month End বন্ধ; আগে Month Reopen প্রয়োজন';
+ end if;
+ if jsonb_array_length(p_rows)<>(select count(*) from public.members
+   where samity_id=p_samity_id and branch_id=v_branch and is_active) then
+   raise exception 'সক্রিয় প্রত্যেক সদস্যের জন্য একটি করে সারি থাকতে হবে';
+ end if;
+ if exists(select 1 from (select value->>'member_id' from jsonb_array_elements(p_rows)
+   group by value->>'member_id' having count(*)>1) d) then
+   raise exception 'একই সদস্যের একাধিক সারি গ্রহণযোগ্য নয়';
+ end if;
+ for r in select value from jsonb_array_elements(p_rows) loop
+   v_member:=nullif(r->>'member_id','')::uuid;
+   if not exists(select 1 from public.members where id=v_member and samity_id=p_samity_id
+     and branch_id=v_branch and is_active) then raise exception 'সদস্য এই সমিতির নন'; end if;
+   if least(coalesce((r->>'gs_deposit')::numeric,0),coalesce((r->>'gs_withdrawal')::numeric,0),
+     coalesce((r->>'lts_new')::numeric,0),coalesce((r->>'optional_savings')::numeric,0),
+     coalesce((r->>'loan_paid')::numeric,0))<0 then raise exception 'ঋণাত্মক অঙ্ক গ্রহণযোগ্য নয়'; end if;
+   if coalesce((r->>'optional_savings')::numeric,0)>0 then
+     v_enroll:=nullif(r->>'optional_enrollment_id','')::uuid;
+     if not exists(select 1 from public.member_savings_enrollments where id=v_enroll
+       and member_id=v_member and savings_type='optional') then raise exception 'ঐচ্ছিক সঞ্চয় স্কিম নির্বাচন করুন'; end if;
+   end if;
+   if coalesce((r->>'loan_paid')::numeric,0)>0 then
+     v_loan:=nullif(r->>'loan_id','')::uuid;
+     if not exists(select 1 from public.loan_accounts where id=v_loan and member_id=v_member and status='active') then
+       raise exception 'সক্রিয় ঋণ নির্বাচন করুন'; end if;
+   end if;
+ end loop;
 
-  select * into v_sheet from public.daily_collection_sheets
-    where samity_id=p_samity_id and collection_date=p_collection_date for update;
+ select * into v_sheet from public.daily_collection_sheets where samity_id=p_samity_id
+   and collection_date=p_collection_date for update;
+ if found then
+   select role::text into v_role from public.profiles where id=auth.uid() and is_active;
+   v_allowed:=v_role in ('main_admin','co_admin','branch_manager') or exists(
+     select 1 from public.profile_permissions where profile_id=auth.uid()
+       and module_key='collection' and can_update);
+   if v_sheet.status='closed' then raise exception 'Day End সম্পন্ন; আগে Day Reopen করুন'; end if;
+   if v_sheet.status='posted' and (not v_allowed or nullif(trim(p_reason),'') is null) then
+     raise exception 'সংশোধনের অনুমতি ও কারণ আবশ্যক'; end if;
+   if v_sheet.status='posted' then
+     insert into public.daily_collection_corrections(sheet_id,old_rows,new_rows,reason,corrected_by)
+       values(v_sheet.id,v_sheet.rows,p_rows,trim(p_reason),auth.uid());
+     delete from public.savings_transactions where collection_sheet_id=v_sheet.id;
+     delete from public.loan_transactions where collection_sheet_id=v_sheet.id;
+     update public.loan_installment_schedule s set
+       principal_paid=coalesce((select sum(t.principal_paid) from public.loan_transactions t where t.schedule_id=s.id),0),
+       service_charge_paid=coalesce((select sum(t.interest_paid) from public.loan_transactions t where t.schedule_id=s.id),0),
+       status=case when coalesce((select sum(t.amount) from public.loan_transactions t where t.schedule_id=s.id),0)>=s.total_due then 'paid'
+         when coalesce((select sum(t.amount) from public.loan_transactions t where t.schedule_id=s.id),0)>0 then 'partial'
+         when s.due_date<current_date then 'overdue' else 'due' end
+     where s.loan_id in(select id from public.loan_accounts where member_id in
+       (select id from public.members where samity_id=p_samity_id));
+   end if;
+   update public.daily_collection_sheets set rows=p_rows,status=case when p_action='post' then 'posted' else 'draft' end,
+     posted_by=case when p_action='post' then auth.uid() else posted_by end,
+     posted_at=case when p_action='post' then now() else posted_at end,updated_by=auth.uid(),updated_at=now()
+     where id=v_sheet.id;
+ else
+   insert into public.daily_collection_sheets(branch_id,samity_id,collection_date,rows,status,created_by,posted_by,posted_at,updated_by)
+     values(v_branch,p_samity_id,p_collection_date,p_rows,case when p_action='post' then 'posted' else 'draft' end,
+       auth.uid(),case when p_action='post' then auth.uid() end,case when p_action='post' then now() end,auth.uid())
+     returning * into v_sheet;
+ end if;
 
-  if found then
-    select role::text into v_role from public.profiles where id=auth.uid();
-    v_can_correct := v_role in ('main_admin','co_admin','branch_manager')
-      or exists(select 1 from public.profile_permissions pp where pp.profile_id=auth.uid() and pp.module_key='collection' and pp.can_update=true);
-    if v_sheet.status='closed' then
-      raise exception 'Day End সম্পন্ন; সংশোধনের জন্য অনুমোদিত Reopen প্রয়োজন';
-    end if;
-    if v_sheet.status='posted' and (not v_can_correct or nullif(trim(p_reason),'') is null) then
-      raise exception 'ভুল পোস্টিং সংশোধনে অনুমতি ও কারণ আবশ্যক';
-    end if;
-    if v_sheet.status='posted' then
-      insert into public.daily_collection_corrections(sheet_id,old_rows,new_rows,reason,corrected_by)
-      values(v_sheet.id,v_sheet.rows,p_rows,trim(p_reason),auth.uid());
-    end if;
-    update public.daily_collection_sheets set rows=p_rows,
-      status=case when p_action='post' then 'posted' else 'draft' end,
-      posted_by=case when p_action='post' then auth.uid() else posted_by end,
-      posted_at=case when p_action='post' then now() else posted_at end,
-      updated_by=auth.uid(),updated_at=now()
-    where id=v_sheet.id;
-    return v_sheet.id;
-  end if;
-
-  if p_action not in ('draft','post') then raise exception 'অবৈধ Posting action'; end if;
-  insert into public.daily_collection_sheets(branch_id,samity_id,collection_date,rows,status,created_by,posted_by,posted_at,updated_by)
-  values(v_branch,p_samity_id,p_collection_date,p_rows,
-    case when p_action='post' then 'posted' else 'draft' end,
-    auth.uid(),case when p_action='post' then auth.uid() end,
-    case when p_action='post' then now() end,auth.uid())
-  returning id into v_sheet.id;
-  return v_sheet.id;
+ if p_action='post' then
+   for r in select value from jsonb_array_elements(p_rows) loop
+     v_member:=nullif(r->>'member_id','')::uuid;
+     v_amt:=coalesce((r->>'gs_deposit')::numeric,0);
+     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
+       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'GS',v_sheet.id); end if;
+     v_amt:=coalesce((r->>'gs_withdrawal')::numeric,0);
+     if v_amt>0 then
+       if v_amt>coalesce((select sum(case when transaction_type='deposit' then amount else -amount end)
+         from public.savings_transactions where member_id=v_member and savings_category='GS'
+         and transaction_date<=p_collection_date),0) then raise exception 'GS স্থিতির চেয়ে বেশি উত্তোলন করা যাবে না'; end if;
+       insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
+         values(v_member,p_collection_date,'withdrawal',v_amt,auth.uid(),'GS',v_sheet.id);
+     end if;
+     v_amt:=coalesce((r->>'lts_new')::numeric,0);
+     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
+       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'LTS-New',v_sheet.id); end if;
+     v_amt:=coalesce((r->>'optional_savings')::numeric,0);
+     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,enrollment_id,collection_sheet_id)
+       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
+     v_left:=coalesce((r->>'loan_paid')::numeric,0);
+     if v_left>0 then
+       v_loan:=nullif(r->>'loan_id','')::uuid;
+       for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid'
+         order by due_date,week_no for update loop
+         exit when v_left<=0;
+         v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
+         if v_amt=0 then continue; end if;
+         v_amt:=least(v_amt,v_left);
+         v_service:=least(v_amt,greatest(0,sc.service_charge_due-sc.service_charge_paid));
+         v_principal:=v_amt-v_service;
+         insert into public.loan_transactions(loan_id,transaction_date,amount,principal_paid,interest_paid,schedule_id,created_by,collection_sheet_id)
+           values(v_loan,p_collection_date,v_amt,v_principal,v_service,sc.id,auth.uid(),v_sheet.id);
+         update public.loan_installment_schedule set principal_paid=principal_paid+v_principal,
+           service_charge_paid=service_charge_paid+v_service,
+           status=case when principal_paid+v_principal+service_charge_paid+v_service>=total_due then 'paid' else 'partial' end
+           where id=sc.id;
+         v_left:=v_left-v_amt;
+       end loop;
+       if v_left>0 then raise exception 'ঋণের অবশিষ্ট কিস্তির চেয়ে বেশি আদায়'; end if;
+     end if;
+   end loop;
+ end if;
+ return v_sheet.id;
 end $$;
-grant execute on function public.can_post_collection(uuid,date) to authenticated;
 grant execute on function public.save_daily_collection(uuid,date,jsonb,text,text) to authenticated;
 
 create or replace function public.close_daily_collection(p_sheet_id uuid)
@@ -173,6 +266,32 @@ begin
     closed_at=now(),updated_by=auth.uid(),updated_at=now() where id=p_sheet_id;
 end $$;
 grant execute on function public.close_daily_collection(uuid) to authenticated;
+
+create or replace function public.reopen_daily_collection(p_sheet_id uuid,p_reason text)
+returns void language plpgsql security definer set search_path=public as $
+declare v_sheet public.daily_collection_sheets%rowtype; v_role text;
+begin
+ select * into v_sheet from public.daily_collection_sheets where id=p_sheet_id for update;
+ if not found then raise exception 'দৈনিক আদায় সিট পাওয়া যায়নি'; end if;
+ select role::text into v_role from public.profiles where id=auth.uid() and is_active;
+ if not public.can_access_branch(v_sheet.branch_id) or not
+   (v_role in ('main_admin','co_admin','branch_manager') or exists(
+     select 1 from public.profile_permissions pp where pp.profile_id=auth.uid()
+       and pp.module_key='collection' and pp.can_update=true)) then
+   raise exception 'Day Reopen করার অনুমতি নেই';
+ end if;
+ if nullif(trim(p_reason),'') is null then raise exception 'Reopen-এর কারণ লিখুন'; end if;
+ if v_sheet.status<>'closed' then raise exception 'এই সিট Day End করা হয়নি'; end if;
+ if exists(select 1 from public.collection_month_closures c where c.branch_id=v_sheet.branch_id
+   and c.month_start=date_trunc('month',v_sheet.collection_date)::date and c.status='closed') then
+   raise exception 'Month End বন্ধ; আগে Month Reopen করুন';
+ end if;
+ insert into public.daily_collection_reopens(sheet_id,reason,reopened_by)
+ values(p_sheet_id,trim(p_reason),auth.uid());
+ update public.daily_collection_sheets set status='posted',closed_by=null,closed_at=null,
+   updated_by=auth.uid(),updated_at=now() where id=p_sheet_id;
+end $;
+grant execute on function public.reopen_daily_collection(uuid,text) to authenticated;
 
 create or replace function public.close_collection_month(p_branch_id uuid,p_month_start date)
 returns void language plpgsql security definer set search_path=public as $$
@@ -283,7 +402,7 @@ declare v_role text;
 begin
   select role::text into v_role from public.profiles where id=auth.uid() and is_active;
   if not public.can_access_branch(p_branch_id) or not
-    (v_role in ('main_admin','co_admin') or exists(select 1 from public.profile_permissions pp where pp.profile_id=auth.uid() and pp.module_key='collection' and pp.can_update=true)) then
+    (v_role in ('main_admin','co_admin','branch_manager') or exists(select 1 from public.profile_permissions pp where pp.profile_id=auth.uid() and pp.module_key='collection' and pp.can_update=true)) then
     raise exception 'Month Reopen করার অনুমতি নেই';
   end if;
   if nullif(trim(p_reason),'') is null then raise exception 'Reopen-এর কারণ লিখুন'; end if;
