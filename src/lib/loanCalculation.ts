@@ -53,13 +53,33 @@ export function calculateLoanSchedule(principal: number): LoanInstallment[] {
 }
 
 /** Returns 46 meeting dates, excluding all explicitly registered closure dates. */
+/** Calculate the first meeting date on or after 14 days from disbursement. */
+export function calculateFirstInstallmentDate(
+  disbursementDate: string,
+  meetingDay: number,
+  closedDates: string[],
+): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(disbursementDate) || !Number.isInteger(meetingDay) || meetingDay < 0 || meetingDay > 6 || meetingDay === 5) {
+    throw new Error('ঋণ বিতরণের তারিখ অথবা সমিতির সভার দিন সঠিক নয়। শুক্রবার সমিতির সভার দিন হতে পারবে না।');
+  }
+  const date = new Date(disbursementDate + 'T12:00:00');
+  if (Number.isNaN(date.getTime())) throw new Error('ঋণ বিতরণের তারিখ সঠিক নয়।');
+  date.setDate(date.getDate() + 14);
+  while (date.getDay() !== meetingDay) date.setDate(date.getDate() + 1);
+  const closed = new Set(closedDates);
+  while (closed.has([date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-'))) {
+    date.setDate(date.getDate() + 7);
+  }
+  return [date.getFullYear(), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-');
+}
+
 export function buildInstallmentDates(
   firstDate: string,
   meetingDay: number,
   closedDates: string[],
 ): string[] {
-  if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(firstDate) || meetingDay < 0 || meetingDay > 6) {
-    throw new Error('প্রথম কিস্তির তারিখ অথবা সমিতির সভার দিন সঠিক নয়।');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDate) || meetingDay < 0 || meetingDay > 6 || meetingDay === 5) {
+    throw new Error('প্রথম কিস্তির তারিখ অথবা সমিতির সভার দিন সঠিক নয়। শুক্রবার সমিতির সভার দিন হতে পারবে না।');
   }
   const closed = new Set(closedDates);
   const date = new Date(`${firstDate}T12:00:00`);
