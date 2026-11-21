@@ -39,6 +39,9 @@ export default function SavingsModule({ samities, canDo }: Props) {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [userId, setUserId] = useState('');
+  const [openingForm, setOpeningForm] = useState({gs:'0',lts:'0',optional:'0',date:todayText(),reference:'',notes:''});
+  const [openingBusy, setOpeningBusy] = useState(false);
+  const [openingNotice, setOpeningNotice] = useState('');
 
   const canView = canDo('savings','view') || canDo('savings','create');
   const canCreate = canDo('savings','create');
@@ -141,6 +144,22 @@ export default function SavingsModule({ samities, canDo }: Props) {
       .select('id,member_id,transaction_date,transaction_type,amount,savings_category,reference_no,notes')
       .eq('member_id', memberId).order('transaction_date', { ascending: false }).order('created_at', { ascending: false });
     if (!refreshed.error) setTransactions((refreshed.data || []) as Tx[]);
+  }
+
+
+  async function saveOpeningBalance(e: FormEvent) {
+    e.preventDefault(); setOpeningNotice('');
+    if (!supabase || !memberId || !userId || !(canDo('opening_data','create')||canDo('opening_data','update'))) { setOpeningNotice('Opening Data Input-এর অনুমতি নেই।'); return; }
+    const gs=Number(openingForm.gs), lts=Number(openingForm.lts), optional=Number(openingForm.optional);
+    if ([gs,lts,optional].some(v=>!Number.isFinite(v)||v<0)) { setOpeningNotice('শূন্য বা তার বেশি সঠিক পরিমাণ লিখুন।'); return; }
+    if (optional>0 && !optionalEnrolled) { setOpeningNotice('Optional balance দিতে হলে সদস্য Optional Savings-এ অন্তর্ভুক্ত থাকতে হবে।'); return; }
+    setOpeningBusy(true);
+    const result=await supabase.from('member_savings_opening_balances').upsert({member_id:memberId,opening_date:openingForm.date,gs_balance:gs,lts_new_balance:lts,optional_balance:optional,reference_no:openingForm.reference.trim()||null,notes:openingForm.notes.trim()||null,created_by:userId,updated_by:userId},{onConflict:'member_id'});
+    setOpeningBusy(false);
+    if(result.error){setOpeningNotice('Opening balance সংরক্ষণ হয়নি: '+result.error.message);return;}
+    setOpeningNotice('Opening Balance সংরক্ষিত হয়েছে।');
+    const refreshed=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date').eq('member_id',memberId).maybeSingle();
+    if(!refreshed.error)setOpening(refreshed.data||null);
   }
 
   if (!canView) return <section className="panel"><h2>অনুমতি প্রয়োজন</h2><p>সঞ্চয় হিসাব দেখার অনুমতি নেই। Main Admin-এর কাছে Savings permission চান।</p></section>;
