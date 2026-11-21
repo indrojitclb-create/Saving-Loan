@@ -177,6 +177,9 @@ begin
      select 1 from public.profile_permissions where profile_id=auth.uid()
        and module_key='collection' and can_update);
    if v_sheet.status='closed' then raise exception 'Day End সম্পন্ন; আগে Day Reopen করুন'; end if;
+   if v_sheet.status='posted' and p_action<>'post' then
+     raise exception 'পোস্ট করা হিসাব সংশোধন করতে পুনরায় পোস্ট করতে হবে';
+   end if;
    if v_sheet.status='posted' and (not v_allowed or nullif(trim(p_reason),'') is null) then
      raise exception 'সংশোধনের অনুমতি ও কারণ আবশ্যক'; end if;
    if v_sheet.status='posted' then
