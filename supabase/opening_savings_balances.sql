@@ -39,3 +39,11 @@ end $$;
 drop trigger if exists member_savings_opening_balance_audit on public.member_savings_opening_balances;
 create trigger member_savings_opening_balance_audit after insert or update on public.member_savings_opening_balances
 for each row execute function public.audit_member_savings_opening_balance();
+
+-- Opening Data Input users may read scoped member identity and optional enrollment data.
+drop policy if exists members_read_opening_data on public.members;
+create policy members_read_opening_data on public.members for select to authenticated
+using (public.can_access_member(id) and (public.has_module_permission('opening_data','view') or public.has_module_permission('opening_data','create') or public.has_module_permission('opening_data','update')));
+drop policy if exists member_savings_read_opening_data on public.member_savings_enrollments;
+create policy member_savings_read_opening_data on public.member_savings_enrollments for select to authenticated
+using (public.can_access_member(member_id) and (public.has_module_permission('opening_data','view') or public.has_module_permission('opening_data','create') or public.has_module_permission('opening_data','update')));
