@@ -216,7 +216,7 @@ begin
     member_id,enrollment_id,savings_type,savings_category,transaction_date,
     transaction_type,amount,reference_no,notes,created_by
   ) values (
-    p_member_id,p_enrollment_id,v_enrollment.savings_type,v_category,p_transaction_date,
+    p_member_id,case when v_enrollment.savings_type='optional' then p_enrollment_id else null end,v_enrollment.savings_type,v_category,p_transaction_date,
     p_transaction_type,p_amount,nullif(trim(p_reference_no),''),nullif(trim(p_notes),''),auth.uid()
   ) returning id into v_id;
 
