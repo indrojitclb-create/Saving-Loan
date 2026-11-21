@@ -50,6 +50,10 @@ create policy opening_loan_tx_insert on public.member_opening_loan_transactions 
 );
 alter table public.loan_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+-- The base schema starts with a generic savings ledger. Add the category
+-- discriminator before applying the category constraint and daily-posting RPCs.
+alter table public.savings_transactions
+  add column if not exists savings_category text not null default 'GS';
 alter table public.savings_transactions drop constraint if exists savings_transactions_savings_category_check;
 alter table public.savings_transactions add constraint savings_transactions_savings_category_check
   check (savings_category in ('GS','LTS-New','Optional'));
