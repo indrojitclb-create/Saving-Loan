@@ -78,19 +78,42 @@ alter table public.daily_collection_corrections enable row level security;
 alter table public.daily_collection_reopens enable row level security;
 alter table public.collection_month_closures enable row level security;
 
+-- CO users may read only Samities assigned to them for the collection date.
+-- Branch/area managers and administrators retain their authorized wider scope.
+create or replace function public.can_access_collection_samity(
+  p_samity_id uuid, p_collection_date date
+) returns boolean
+language plpgsql stable security definer set search_path=public as $
+declare v_role text; v_employee uuid; v_branch uuid;
+begin
+  select role::text, employee_id into v_role, v_employee
+  from public.profiles where id=auth.uid() and is_active=true;
+  if v_role in ('main_admin','co_admin') then return true; end if;
+  select branch_id into v_branch from public.samities
+  where id=p_samity_id and status='active';
+  if v_branch is null then return false; end if;
+  if v_role='co' then
+    return exists(select 1 from public.samity_employee_assignments a
+      where a.employee_id=v_employee and a.samity_id=p_samity_id
+        and a.is_active and a.assigned_from<=p_collection_date
+        and (a.assigned_to is null or a.assigned_to>=p_collection_date));
+  end if;
+  return public.can_access_branch(v_branch);
+end $;
+
 drop policy if exists daily_collection_read on public.daily_collection_sheets;
 create policy daily_collection_read on public.daily_collection_sheets
-for select to authenticated using (public.can_access_branch(branch_id));
+for select to authenticated using (public.can_access_collection_samity(samity_id,collection_date));
 drop policy if exists daily_collection_correction_read on public.daily_collection_corrections;
 create policy daily_collection_correction_read on public.daily_collection_corrections
 for select to authenticated using (
   exists (select 1 from public.daily_collection_sheets s
-          where s.id = sheet_id and public.can_access_branch(s.branch_id))
+          where s.id = sheet_id and public.can_access_collection_samity(s.samity_id,s.collection_date))
 );
 drop policy if exists daily_collection_reopens_read on public.daily_collection_reopens;
 create policy daily_collection_reopens_read on public.daily_collection_reopens
 for select to authenticated using (exists(select 1 from public.daily_collection_sheets s
-  where s.id=sheet_id and public.can_access_branch(s.branch_id)));
+  where s.id=sheet_id and public.can_access_collection_samity(s.samity_id,s.collection_date)));
 drop policy if exists collection_month_closure_read on public.collection_month_closures;
 create policy collection_month_closure_read on public.collection_month_closures
 for select to authenticated using (public.can_access_branch(branch_id));
@@ -369,7 +392,9 @@ begin
       join public.loan_accounts a on a.id=t.loan_id join public.members m on m.id=a.member_id
       where m.branch_id=p_branch_id and t.transaction_date>=p_month_start
         and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'loan_due',coalesce((select sum(sc.total_due) from public.loan_installment_schedule sc
+    'loan_due',coalesce((select sum(greatest(0,sc.total_due-
+        coalesce(sc.principal_paid,0)-coalesce(sc.service_charge_paid,0)))
+      from public.loan_installment_schedule sc
       join public.loan_accounts a on a.id=sc.loan_id join public.members m on m.id=a.member_id
       where m.branch_id=p_branch_id and sc.due_date>=p_month_start
         and sc.due_date<(p_month_start+interval '1 month')),0),
