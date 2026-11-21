@@ -275,24 +275,40 @@ begin
        values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
      v_left:=coalesce((r->>'loan_paid')::numeric,0);
      if v_left>0 then
-       v_loan:=nullif(r->>'loan_id','')::uuid;
-       for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
-         order by due_date,week_no for update loop
-         exit when v_left<=0;
-         v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
-         if v_amt=0 then continue; end if;
-         v_amt:=least(v_amt,v_left);
-         v_service:=least(v_amt,greatest(0,sc.service_charge_due-sc.service_charge_paid));
-         v_principal:=v_amt-v_service;
-         insert into public.loan_transactions(loan_id,transaction_date,amount,principal_paid,interest_paid,schedule_id,created_by,collection_sheet_id)
-           values(v_loan,p_collection_date,v_amt,v_principal,v_service,sc.id,auth.uid(),v_sheet.id);
-         update public.loan_installment_schedule set principal_paid=principal_paid+v_principal,
-           service_charge_paid=service_charge_paid+v_service,
-           status=case when principal_paid+v_principal+service_charge_paid+v_service>=total_due then 'paid' else 'partial' end
-           where id=sc.id;
-         v_left:=v_left-v_amt;
-       end loop;
-       if v_left>0 then raise exception 'ঋণের অবশিষ্ট কিস্তির চেয়ে বেশি আদায়'; end if;
+       if nullif(r->>'opening_loan_id','') is not null then
+         v_opening_loan:=(r->>'opening_loan_id')::uuid;
+         select greatest(0,outstanding_balance) into v_amt from public.member_opening_loans
+           where id=v_opening_loan and member_id=v_member and current_status='active' for update;
+         if v_amt is null or v_left>v_amt then raise exception 'প্রারম্ভিক ঋণের অবশিষ্ট স্থিতির চেয়ে বেশি আদায়'; end if;
+         insert into public.member_opening_loan_transactions(opening_loan_id,transaction_date,amount,installment_no,created_by,collection_sheet_id)
+           values(v_opening_loan,p_collection_date,v_left,
+             (select min(installment_no) from public.member_opening_loan_installment_schedule where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date),
+             auth.uid(),v_sheet.id);
+         update public.member_opening_loans set
+           amount_repaid_to_date=amount_repaid_to_date+v_left,
+           overdue_balance=greatest(0,overdue_balance-v_left),
+           updated_by=auth.uid(),updated_at=now()
+         where id=v_opening_loan;
+       else
+         v_loan:=nullif(r->>'loan_id','')::uuid;
+         for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
+           order by due_date,week_no for update loop
+           exit when v_left<=0;
+           v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
+           if v_amt=0 then continue; end if;
+           v_amt:=least(v_amt,v_left);
+           v_service:=least(v_amt,greatest(0,sc.service_charge_due-sc.service_charge_paid));
+           v_principal:=v_amt-v_service;
+           insert into public.loan_transactions(loan_id,transaction_date,amount,principal_paid,interest_paid,schedule_id,created_by,collection_sheet_id)
+             values(v_loan,p_collection_date,v_amt,v_principal,v_service,sc.id,auth.uid(),v_sheet.id);
+           update public.loan_installment_schedule set principal_paid=principal_paid+v_principal,
+             service_charge_paid=service_charge_paid+v_service,
+             status=case when principal_paid+v_principal+service_charge_paid+v_service>=total_due then 'paid' else 'partial' end
+             where id=sc.id;
+           v_left:=v_left-v_amt;
+         end loop;
+         if v_left>0 then raise exception 'ঋণের অবশিষ্ট কিস্তির চেয়ে বেশি আদায়'; end if;
+       end if;
      end if;
    end loop;
  end if;
