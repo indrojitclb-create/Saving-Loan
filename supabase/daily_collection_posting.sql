@@ -471,18 +471,30 @@ begin
       join public.loan_accounts a on a.id=sc.loan_id join public.members m on m.id=a.member_id
       where m.branch_id=p_branch_id and sc.due_date>=p_month_start
         and sc.due_date<(p_month_start+interval '1 month')),0),
-    'gs_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='GS'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'lts_new_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='LTS-New'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'optional_savings_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='Optional'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'gs_closing_balance',
+      coalesce((select sum(o.gs_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='GS'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'lts_new_closing_balance',
+      coalesce((select sum(o.lts_new_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='LTS-New'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'optional_savings_closing_balance',
+      coalesce((select sum(o.optional_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='Optional'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
     'loan_outstanding',coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
       coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
         and t.transaction_date<(p_month_start+interval '1 month')),0)))
