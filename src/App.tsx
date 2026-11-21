@@ -723,7 +723,7 @@ export default function App() {
       {active === 'collection' && <CollectionModule samities={samities} canDo={canDo} />}
       {active === 'holiday_calendar' && <HolidayModule branches={branches} samities={samities} canDo={canDo} />}
       {active === 'reports' && <ReportsModule canDo={canDo} />}
-      {active !== 'dashboard' && active !== 'savings' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && active !== 'reports' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
+      {active !== 'dashboard' && active !== 'savings' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && active !== 'reports' && active !== 'opening_data' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
   </div>;
