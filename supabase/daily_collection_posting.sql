@@ -24,6 +24,14 @@ create index if not exists daily_collection_branch_date_idx
 create index if not exists daily_collection_samity_date_idx
   on public.daily_collection_sheets(samity_id, collection_date desc);
 
+-- Ensure the shared savings ledger columns exist before daily posting policies/RPCs.
+-- optional_savings_versions.sql must run first because enrollment_id references its table.
+alter table public.savings_transactions
+  add column if not exists savings_category text not null default 'GS',
+  add column if not exists savings_type text not null default 'mandatory'
+    check (savings_type in ('mandatory','optional')),
+  add column if not exists enrollment_id uuid references public.member_savings_enrollments(id) on delete restrict;
+
 -- Each generated ledger row is traceable to the daily sheet that created it.
 alter table public.savings_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
@@ -284,8 +292,8 @@ begin
      if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
        values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'LTS-New',v_sheet.id); end if;
      v_amt:=coalesce((r->>'optional_savings')::numeric,0);
-     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,enrollment_id,collection_sheet_id)
-       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
+     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,savings_type,enrollment_id,collection_sheet_id)
+       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional','optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
      v_left:=coalesce((r->>'loan_paid')::numeric,0);
      if v_left>0 then
        if nullif(r->>'opening_loan_id','') is not null then
