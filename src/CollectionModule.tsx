@@ -19,6 +19,75 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [fridayEnabled,setFridayEnabled]=useState(true);
   const [loading,setLoading]=useState(false);
   const [notice,setNotice]=useState('');
+  const [dailyDate,setDailyDate]=useState(dateText(new Date()));
+  const [dailyRows,setDailyRows]=useState<any[]>([]);
+  const [dailyStatus,setDailyStatus]=useState('');
+  const [dailySheetId,setDailySheetId]=useState('');
+  const [correctionReason,setCorrectionReason]=useState('');
+  const [dailyBusy,setDailyBusy]=useState(false);
+  const [profile,setProfile]=useState<any>(null);
+  const [assignedSamityIds,setAssignedSamityIds]=useState<string[]>([]);
+  const canCorrect=canDo('collection','update')||['main_admin','co_admin','branch_manager'].includes(profile?.role);
+  const visibleSamities=useMemo(()=>profile?.role==='co'
+    ? samities.filter(s=>assignedSamityIds.includes(s.id))
+    : profile?.role==='branch_manager'
+      ? samities.filter(s=>s.branch_id===profile.branch_id)
+      : samities,[samities,profile,assignedSamityIds]);
+  useEffect(()=>{let live=true;(async()=>{
+    if(!supabase)return;
+    const {data:{user}}=await supabase.auth.getUser();
+    if(!user)return;
+    const {data:p}=await supabase.from('profiles').select('role,branch_id,employee_id').eq('id',user.id).maybeSingle();
+    if(!live)return;setProfile(p||null);
+    if(p?.role==='co'&&p.employee_id){
+      const {data:a}=await supabase.from('samity_employee_assignments').select('samity_id')
+        .eq('employee_id',p.employee_id).eq('is_active',true);
+      if(live)setAssignedSamityIds((a||[]).map(x=>x.samity_id));
+    }
+  })();return()=>{live=false}},[]);
+  useEffect(()=>{let live=true;(async()=>{
+    if(!supabase||!samityId||!dailyDate){setDailyRows([]);setDailyStatus('');setDailySheetId('');return;}
+    const {data,error}=await supabase.from('daily_collection_sheets').select('id,status,rows')
+      .eq('samity_id',samityId).eq('collection_date',dailyDate).maybeSingle();
+    if(!live)return;
+    if(error){setNotice('দৈনিক সিট পড়া যায়নি: '+error.message);return;}
+    setDailySheetId(data?.id||'');setDailyStatus(data?.status||'');
+    if(data?.rows)setDailyRows(data.rows);
+    else setDailyRows(members.map(m=>({member_id:m.id,member_code:m.member_code,member_name:m.full_name,gs_deposit:0,gs_withdrawal:0,optional_savings:0,lts_new:0,loan_paid:0,remarks:''})));
+  })();return()=>{live=false}},[samityId,dailyDate,members]);
+  function updateDailyRow(index:number,key:string,value:any){
+    setDailyRows(old=>old.map((r,i)=>i===index?{...r,[key]:value}:r));
+  }
+  async function saveDaily(action:'draft'|'post'){
+    if(!supabase||!samityId||!dailyDate)return;
+    if(dailyStatus==='closed'){setNotice('Day End সম্পন্ন; সংশোধনের জন্য অনুমোদিত Reopen প্রয়োজন।');return;}
+    if(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim())){
+      setNotice('পোস্ট করা হিসাব সংশোধনে অনুমতি ও কারণ আবশ্যক।');return;
+    }
+    setDailyBusy(true);setNotice('');
+    const {data,error}=await supabase.rpc('save_daily_collection',{
+      p_samity_id:samityId,p_collection_date:dailyDate,p_rows:dailyRows,
+      p_action:action,p_reason:correctionReason.trim()||null
+    });
+    setDailyBusy(false);
+    if(error){setNotice('সংরক্ষণ হয়নি: '+error.message);return;}
+    setDailySheetId(data);setDailyStatus(action==='post'?'posted':'draft');
+    setCorrectionReason('');setNotice(action==='post'?'দৈনিক আদায় পোস্ট সম্পন্ন হয়েছে।':'খসড়া সংরক্ষণ হয়েছে।');
+  }
+  async function closeDay(){
+    if(!supabase||!dailySheetId)return;
+    if(!window.confirm('এই সমিতির আজকের আদায় সিটের Day End করবেন?'))return;
+    setDailyBusy(true);const {error}=await supabase.rpc('close_daily_collection',{p_sheet_id:dailySheetId});setDailyBusy(false);
+    if(error){setNotice('Day End হয়নি: '+error.message);return;}
+    setDailyStatus('closed');setNotice('Day End সম্পন্ন হয়েছে।');
+  }
+  async function closeMonth(){
+    if(!supabase||!selectedSamity?.branch_id)return;
+    const monthStart=month+'-01';
+    if(!window.confirm(month+' মাসের শাখার Month End করবেন?'))return;
+    setDailyBusy(true);const {error}=await supabase.rpc('close_collection_month',{p_branch_id:selectedSamity.branch_id,p_month_start:monthStart});setDailyBusy(false);
+    setNotice(error?'Month End হয়নি: '+error.message:'Month End সম্পন্ন হয়েছে।');
+  }
   const selectedSamity=samities.find(s=>s.id===samityId);
   const endOfMonth=month?(()=>{const [y,m]=month.split('-').map(Number);return dateText(new Date(y,m,0,12));})():'';
 
@@ -104,7 +173,24 @@ export default function CollectionModule({samities,canDo}:Props) {
 
   if(!canDo('collection','view')&&!canDo('collection','create'))return <section className="panel"><h2>অনুমতি প্রয়োজন</h2><p>সমিতিভিত্তিক আদায় সিট দেখার অনুমতি নেই। Main Admin-এর কাছে Collection permission চান।</p></section>;
   return <section className="workspace">
-    <div className="section-head"><div><p className="eyebrow">SAMITY COLLECTION</p><h2>সমিতিভিত্তিক মাসিক আদায় সিট</h2><p>একই সদস্যের GS, LTS-New ও ঋণের আদায় একসঙ্গে দেখুন।</p></div></div>
+    <div className="section-head"><div><p className="eyebrow">DAILY COLLECTION POSTING</p><h2>দৈনিক আদায় পোস্টিং সিট</h2><p>সমিতির সভার দিন অনুযায়ী সদস্যভিত্তিক আদায় লিখুন, পোস্ট করুন এবং Day End সম্পন্ন করুন।</p></div></div>
+    <div className="form-grid">
+      <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{visibleSamities.filter(x=>x.status==='active').map(x=><option key={x.id} value={x.id}>{x.samity_code} — {x.samity_name}</option>)}</select></label>
+      <label>আদায়ের তারিখ *<input type="date" value={dailyDate} onChange={e=>setDailyDate(e.target.value)}/></label>
+    </div>
+    {samityId&&<><div className="panel"><b>অবস্থা:</b> {dailyStatus==='closed'?'Day End সম্পন্ন':dailyStatus==='posted'?'Posted':dailyStatus==='draft'?'Draft':'এখনও পোস্ট হয়নি'}　<b>সভার দিন:</b> {['রবিবার','সোমবার','মঙ্গলবার','বুধবার','বৃহস্পতিবার','শুক্রবার','শনিবার'][selectedSamity?.meeting_day]||'—'}</div>
+    {dailyRows.length>0&&<div className="table-wrap"><table><thead><tr><th>SL</th><th>সদস্য কোড</th><th>সদস্যের নাম</th><th>GS জমা</th><th>GS উত্তোলন</th><th>ঐচ্ছিক সঞ্চয়</th><th>LTS-New</th><th>ঋণ আদায়</th><th>মন্তব্য</th></tr></thead><tbody>
+    {dailyRows.map((r,i)=><tr key={r.member_id}><td>{i+1}</td><td>{r.member_code}</td><td>{r.member_name}</td>{['gs_deposit','gs_withdrawal','optional_savings','lts_new','loan_paid'].map(k=><td key={k}><input type="number" min="0" step="0.01" disabled={dailyStatus==='closed'||(dailyStatus==='posted'&&!canCorrect)} value={r[k]||0} onChange={e=>updateDailyRow(i,k,Number(e.target.value))}/></td>)}<td><input disabled={dailyStatus==='closed'||(dailyStatus==='posted'&&!canCorrect)} value={r.remarks||''} onChange={e=>updateDailyRow(i,'remarks',e.target.value)}/></td></tr>)}
+    </tbody></table></div>:<p className="muted">{loading?'সদস্য তালিকা লোড হচ্ছে...':'সমিতি নির্বাচন করুন অথবা সদস্য তালিকা পাওয়া যায়নি।'}</p>}
+    {dailyStatus==='posted'&&canCorrect&&<label>সংশোধনের কারণ *<input value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} placeholder="কেন সংশোধন করছেন লিখুন"/></label>}
+    <div className="form-actions">
+      <button disabled={dailyBusy||!samityId||!dailyRows.length||dailyStatus==='closed'||(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim()))} onClick={()=>saveDaily('draft')}>খসড়া সংরক্ষণ</button>
+      <button disabled={dailyBusy||!samityId||!dailyRows.length||dailyStatus==='closed'||(dailyStatus==='posted'&&(!canCorrect||!correctionReason.trim()))} onClick={()=>saveDaily('post')}>{dailyStatus==='posted'?'সংশোধন সংরক্ষণ ও পোস্ট':'আদায় পোস্ট করুন'}</button>
+      <button className="secondary" disabled={dailyBusy||dailyStatus!=='posted'||dailyStatus==='closed'||!canCorrect} onClick={closeDay}>Day End</button>
+      <button className="secondary" disabled={dailyBusy||!canCorrect||!month||!selectedSamity?.branch_id} onClick={closeMonth}>Month End (শাখা)</button>
+    </div></>}
+    <div className="divider"></div>
+    <div className="section-head"><div><p className="eyebrow">MONTHLY REPORT</p><h2>সমিতিভিত্তিক মাসিক আদায় রিপোর্ট</h2><p>সঞ্চয় ও ঋণ আদায়ের বিদ্যমান রিপোর্ট।</p></div></div><h2>সমিতিভিত্তিক মাসিক আদায় সিট</h2><p>একই সদস্যের GS, LTS-New ও ঋণের আদায় একসঙ্গে দেখুন।</p></div></div>
     <div className="form-grid">
       <label>সমিতি *<select value={samityId} onChange={e=>setSamityId(e.target.value)}><option value="">সমিতি নির্বাচন</option>{samities.map(s=><option key={s.id} value={s.id}>{s.samity_code} — {s.samity_name}</option>)}</select></label>
       <label>মাস *<input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></label>
