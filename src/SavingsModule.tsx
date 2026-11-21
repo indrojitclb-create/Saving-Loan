@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 
 type Props = {
@@ -101,7 +102,7 @@ export default function SavingsModule({ samities, canDo }: Props) {
   });
   const selectedBalance = balances[category] || 0;
 
-  async function saveTransaction(e: React.FormEvent) {
+  async function saveTransaction(e: FormEvent) {
     e.preventDefault();
     setNotice('');
     const value = Number(amount);
