@@ -234,7 +234,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     const relevantHolidays=openingHolidays.filter(h=>h.is_active&&(h.scope==='organization'||(h.scope==='branch'&&h.branch_id===selectedSamity.branch_id)||(h.scope==='samity'&&h.samity_id===selectedSamity.id)));
     const closedDates=[...openingClosures];
     for(const h of relevantHolidays){const d=new Date(h.date_from+'T12:00:00'),end=new Date(h.date_to+'T12:00:00');while(d<=end){closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));d.setDate(d.getDate()+1);}}
-    if(openingFridayEnabled){const d=new Date(loanForm.disbursement_date+'T12:00:00'),end=new Date(d);end.setDate(end.getDate()+46*7+60);for(;d<=end;d.setDate(d.getDate()+1))if(d.getDay()===5)closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');}
+    if(openingFridayEnabled){const d=new Date(loanForm.disbursement_date+'T12:00:00'),end=new Date(d);end.setDate(end.getDate()+46*7+60);for(;d<=end;d.setDate(d.getDate()+1))if(d.getDay()===5)closedDates.push([d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'));}
     let nextInstallmentDate:string|null=null;
     let generatedSchedule:any[]=[];
     const remainingBalance=Math.max(0,principal+charge-repaid);
