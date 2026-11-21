@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 
 type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string };
+type OpeningLoan = { id:string; member_id:string; loan_no:string; disbursement_date:string; project_name:string; loan_cycle:number; principal_amount:number; service_charge_amount:number; amount_repaid_to_date:number; current_status:'active'|'closed'|'written_off'; outstanding_balance:number; overdue_balance:number; last_installment_no:number; reference_no:string|null; notes:string|null };
 
 type Props = {
   samities: any[];
@@ -43,6 +44,11 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [openingForm, setOpeningForm] = useState({gs:'0',lts:'0',optional:'0',date:todayText(),reference:'',notes:''});
   const [openingBusy, setOpeningBusy] = useState(false);
   const [openingNotice, setOpeningNotice] = useState('');
+  const [openingLoans,setOpeningLoans]=useState<OpeningLoan[]>([]);
+  const [loanForm,setLoanForm]=useState({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active' as 'active'|'closed'|'written_off',overdue_balance:'0',last_installment_no:'0',reference_no:'',notes:''});
+  const [editingLoanId,setEditingLoanId]=useState('');
+  const [loanBusy,setLoanBusy]=useState(false);
+  const [loanNotice,setLoanNotice]=useState('');
 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
@@ -94,7 +100,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       setLoading(false);
     })();
     return () => { live = false; };
-  }, [memberId]);
+  }, [memberId,openingOnly]);
 
   useEffect(() => {
     setOpeningForm(opening ? {
@@ -176,6 +182,33 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if(!refreshed.error)setOpening(refreshed.data||null);
   }
 
+  function resetLoanForm(){
+    setEditingLoanId('');
+    setLoanForm({loan_no:'',disbursement_date:todayText(),project_name:'',loan_cycle:'1',principal_amount:'',service_charge_amount:'0',amount_repaid_to_date:'0',current_status:'active',overdue_balance:'0',last_installment_no:'0',reference_no:'',notes:''});
+    setLoanNotice('');
+  }
+  function editOpeningLoan(loan:OpeningLoan){
+    setEditingLoanId(loan.id);
+    setLoanForm({loan_no:loan.loan_no,disbursement_date:loan.disbursement_date,project_name:loan.project_name,loan_cycle:String(loan.loan_cycle),principal_amount:String(loan.principal_amount),service_charge_amount:String(loan.service_charge_amount),amount_repaid_to_date:String(loan.amount_repaid_to_date),current_status:loan.current_status,overdue_balance:String(loan.overdue_balance||0),last_installment_no:String(loan.last_installment_no),reference_no:loan.reference_no||'',notes:loan.notes||''});
+    setLoanNotice('');
+  }
+  async function saveOpeningLoan(e:FormEvent){
+    e.preventDefault();setLoanNotice('');
+    if(!supabase||!memberId||!userId){setLoanNotice('সদস্য বা ব্যবহারকারীর তথ্য পাওয়া যায়নি।');return;}
+    if(editingLoanId?!canDo('opening_data','update'):!canDo('opening_data','create')){setLoanNotice('এই ঋণ তথ্য সংরক্ষণ/পরিবর্তনের অনুমতি নেই।');return;}
+    const principal=Number(loanForm.principal_amount),charge=Number(loanForm.service_charge_amount),repaid=Number(loanForm.amount_repaid_to_date),arrears=Number(loanForm.overdue_balance),cycle=Number(loanForm.loan_cycle),last=Number(loanForm.last_installment_no);
+    if(!loanForm.loan_no.trim()||!loanForm.project_name.trim()||!loanForm.disbursement_date||![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<=0||charge<0||repaid<0||arrears<0||cycle<1||last<0||repaid>principal+charge){setLoanNotice('ঋণের তথ্য ও টাকার পরিমাণ যাচাই করুন। এ পর্যন্ত আদায় আসল ঋণ ও সেবামূল্যের যোগফলের বেশি হতে পারবে না।');return;}
+    if(loanForm.current_status==='closed'&&principal+charge-repaid>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ অবস্থা নির্বাচন করা যাবে না।');return;}
+    setLoanBusy(true);
+    const payload={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
+    const result=editingLoanId?await supabase.from('member_opening_loans').update(payload).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payload);
+    setLoanBusy(false);
+    if(result.error){setLoanNotice('ঋণের তথ্য সংরক্ষণ হয়নি: '+result.error.message);return;}
+    setLoanNotice('প্রারম্ভিক ঋণের তথ্য সংরক্ষিত হয়েছে।');resetLoanForm();
+    const refreshed=await supabase.from('member_opening_loans').select('*').eq('member_id',memberId).order('disbursement_date',{ascending:false});
+    if(!refreshed.error)setOpeningLoans((refreshed.data||[]) as OpeningLoan[]);
+  }
+
   if (!canView) return <section className="panel"><h2>অনুমতি প্রয়োজন</h2><p>সঞ্চয় হিসাব দেখার অনুমতি নেই। Main Admin-এর কাছে Savings permission চান।</p></section>;
 
   return <section className="workspace">
@@ -207,6 +240,34 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         {openingNotice && <div className="notice">{openingNotice}</div>}
         <div className="form-actions"><button disabled={openingBusy||!memberId}>{openingBusy?'সংরক্ষণ হচ্ছে...':'Opening Balance সংরক্ষণ'}</button></div>
       </form>}
+      {openingOnly && <section className="panel">
+        <h3>প্রারম্ভিক ঋণের তথ্য</h3>
+        <p className="muted">প্রতিটি পুরোনো ঋণ আলাদা করে এন্ট্রি করুন। অবশিষ্ট স্থিতি আসল ঋণ + সেবামূল্য − এ পর্যন্ত আদায় থেকে হিসাব হবে। বকেয়া স্থিতি আলাদাভাবে লিখতে হবে।</p>
+        {(canDo('opening_data','create')||canDo('opening_data','update'))&&<form className="employee-form" onSubmit={saveOpeningLoan}>
+          <div className="form-grid">
+            <label>ঋণ নম্বর *<input required value={loanForm.loan_no} onChange={e=>setLoanForm({...loanForm,loan_no:e.target.value})}/></label>
+            <label>ঋণ বিতরণের তারিখ *<input type="date" required value={loanForm.disbursement_date} onChange={e=>setLoanForm({...loanForm,disbursement_date:e.target.value})}/></label>
+            <label>প্রকল্পের নাম *<input required value={loanForm.project_name} onChange={e=>setLoanForm({...loanForm,project_name:e.target.value})}/></label>
+            <label>কততম দফা *<input type="number" min="1" step="1" required value={loanForm.loan_cycle} onChange={e=>setLoanForm({...loanForm,loan_cycle:e.target.value})}/></label>
+            <label>আসল ঋণ *<input type="number" min="0.01" step="0.01" required value={loanForm.principal_amount} onChange={e=>setLoanForm({...loanForm,principal_amount:e.target.value})}/></label>
+            <label>সেবামূল্য *<input type="number" min="0" step="0.01" required value={loanForm.service_charge_amount} onChange={e=>setLoanForm({...loanForm,service_charge_amount:e.target.value})}/></label>
+            <label>এ পর্যন্ত আদায় *<input type="number" min="0" step="0.01" required value={loanForm.amount_repaid_to_date} onChange={e=>setLoanForm({...loanForm,amount_repaid_to_date:e.target.value})}/></label>
+            <label>বর্তমান অবস্থা *<select value={loanForm.current_status} onChange={e=>setLoanForm({...loanForm,current_status:e.target.value as any})}><option value="active">চলমান</option><option value="closed">বন্ধ</option><option value="written_off">অবলোপন</option></select></label>
+            <label>বকেয়া স্থিতি *<input type="number" min="0" step="0.01" required value={loanForm.overdue_balance} onChange={e=>setLoanForm({...loanForm,overdue_balance:e.target.value})}/></label>
+            <label>সর্বশেষ কিস্তি নম্বর *<input type="number" min="0" step="1" required value={loanForm.last_installment_no} onChange={e=>setLoanForm({...loanForm,last_installment_no:e.target.value})}/></label>
+            <label>রেফারেন্স নম্বর<input value={loanForm.reference_no} onChange={e=>setLoanForm({...loanForm,reference_no:e.target.value})}/></label>
+            <label>মন্তব্য<input value={loanForm.notes} onChange={e=>setLoanForm({...loanForm,notes:e.target.value})}/></label>
+          </div>
+          <p className="muted">বর্তমান অবশিষ্ট স্থিতি: <b>{money(Math.max(0,Number(loanForm.principal_amount||0)+Number(loanForm.service_charge_amount||0)-Number(loanForm.amount_repaid_to_date||0)))}</b></p>
+          {loanNotice&&<div className="notice">{loanNotice}</div>}
+          <div className="form-actions"><button disabled={loanBusy}>{loanBusy?'সংরক্ষণ হচ্ছে...':editingLoanId?'ঋণের তথ্য হালনাগাদ':'ঋণের তথ্য সংরক্ষণ'}</button>{editingLoanId&&<button type="button" className="secondary" onClick={resetLoanForm}>বাতিল</button>}</div>
+        </form>}
+        <h3>সংরক্ষিত প্রারম্ভিক ঋণ</h3>
+        <div className="table-wrap"><table><thead><tr><th>ঋণ নম্বর</th><th>বিতরণের তারিখ</th><th>প্রকল্প</th><th>দফা</th><th>আসল</th><th>সেবামূল্য</th><th>এ পর্যন্ত আদায়</th><th>বর্তমান অবশিষ্ট</th><th>বকেয়া</th><th>অবস্থা</th><th>শেষ কিস্তি</th><th>কাজ</th></tr></thead><tbody>
+          {openingLoans.map(loan=><tr key={loan.id}><td>{loan.loan_no}</td><td>{loan.disbursement_date}</td><td>{loan.project_name}</td><td>{loan.loan_cycle}</td><td>{money(Number(loan.principal_amount))}</td><td>{money(Number(loan.service_charge_amount))}</td><td>{money(Number(loan.amount_repaid_to_date))}</td><td>{money(Number(loan.outstanding_balance))}</td><td>{money(Number(loan.overdue_balance))}</td><td>{loan.current_status==='active'?'চলমান':loan.current_status==='closed'?'বন্ধ':'অবলোপন'}</td><td>{loan.last_installment_no}</td><td>{canDo('opening_data','update')&&<button type="button" className="secondary" onClick={()=>editOpeningLoan(loan)}>সম্পাদনা</button>}</td></tr>)}
+          {openingLoans.length===0&&<tr><td colSpan={12} className="empty">এখনও কোনো প্রারম্ভিক ঋণ এন্ট্রি করা হয়নি।</td></tr>}
+        </tbody></table></div>
+      </section>}
       {!openingOnly && canCreate && <form className="employee-form" onSubmit={saveTransaction}>
         <h3>নতুন সঞ্চয় লেনদেন</h3>
         <div className="form-grid">
