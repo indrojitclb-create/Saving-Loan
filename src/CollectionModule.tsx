@@ -11,6 +11,7 @@ export default function CollectionModule({samities,canDo}:Props) {
   const [month,setMonth]=useState(dateText(new Date(today.getFullYear(),today.getMonth(),1)).slice(0,7));
   const [members,setMembers]=useState<any[]>([]);
   const [savings,setSavings]=useState<any[]>([]);
+  const [openingSavings,setOpeningSavings]=useState<any[]>([]);
   const [loans,setLoans]=useState<any[]>([]);
   const [openingLoans,setOpeningLoans]=useState<any[]>([]);
   const [openingLoanSchedule,setOpeningLoanSchedule]=useState<any[]>([]);
@@ -159,7 +160,7 @@ export default function CollectionModule({samities,canDo}:Props) {
   useEffect(()=>{
     let cancelled=false;
     async function load(){
-      if(!supabase||!samityId||!month){setMembers([]);setSavings([]);setLoans([]);setOpeningLoans([]);setOpeningLoanSchedule([]);setOpeningLoanTx([]);setLoanTx([]);setLoanSchedule([]);return;}
+      if(!supabase||!samityId||!month){setMembers([]);setSavings([]);setOpeningSavings([]);setLoans([]);setOpeningLoans([]);setOpeningLoanSchedule([]);setOpeningLoanTx([]);setLoanTx([]);setLoanSchedule([]);return;}
       setLoading(true);setNotice('');
       const start=month+'-01';
       const [yy,mm]=month.split('-').map(Number);
@@ -167,9 +168,10 @@ export default function CollectionModule({samities,canDo}:Props) {
       const mr=await supabase.from('members').select('id,member_code,full_name,spouse_name,samity_id,is_active').eq('samity_id',samityId).eq('is_active',true).order('member_code');
       if(mr.error){if(!cancelled)setNotice('সদস্য তালিকা পড়া যায়নি: '+mr.error.message);setLoading(false);return;}
       const ids=(mr.data||[]).map(x=>x.id);
-      if(!ids.length){if(!cancelled){setMembers([]);setSavings([]);setLoans([]);setLoanTx([]);setLoanSchedule([]);setLoading(false);}return;}
-      const [sr,lr,or,cr,hr,hs,er]=await Promise.all([
+      if(!ids.length){if(!cancelled){setMembers([]);setSavings([]);setOpeningSavings([]);setLoans([]);setOpeningLoans([]);setOpeningLoanSchedule([]);setOpeningLoanTx([]);setLoanTx([]);setLoanSchedule([]);setLoading(false);}return;}
+      const [sr,openingSavingsResult,lr,or,cr,hr,hs,er]=await Promise.all([
         supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category').in('member_id',ids).lte('transaction_date',end).order('transaction_date'),
+        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date').in('member_id',ids).lt('opening_date',start),
         supabase.from('loan_accounts').select('id,loan_no,member_id,principal,total_repayable,total_service_charge,disbursement_date,status').in('member_id',ids).order('disbursement_date'),
         supabase.from('member_opening_loans').select('id,loan_no,member_id,principal_amount,service_charge_amount,amount_repaid_to_date,outstanding_balance,overdue_balance,next_collectible_balance,disbursement_date,current_status').in('member_id',ids).eq('current_status','active').order('disbursement_date'),
         supabase.from('samity_week_closures').select('closure_date').eq('samity_id',samityId).gte('closure_date',start).lte('closure_date',end),
@@ -177,7 +179,7 @@ export default function CollectionModule({samities,canDo}:Props) {
         supabase.from('holiday_calendar_settings').select('friday_holiday_enabled').eq('id',1).maybeSingle(),
         supabase.from('member_savings_enrollments').select('id,member_id,savings_type,product_name_snapshot,amount').in('member_id',ids)
       ]);
-      if(sr.error||lr.error||or.error){if(!cancelled)setNotice('আদায় তথ্য পড়া যায়নি: '+(sr.error?.message||lr.error?.message||or.error?.message));setLoading(false);return;}
+      if(sr.error||openingSavingsResult.error||lr.error||or.error){if(!cancelled)setNotice('আদায় তথ্য পড়া যায়নি: '+(sr.error?.message||openingSavingsResult.error?.message||lr.error?.message||or.error?.message));setLoading(false);return;}
       const loanIds=(lr.data||[]).map(x=>x.id);
       const openingLoanIds=(or.data||[]).map(x=>x.id);
       const [tr, scheduleResult, otr, osr]=loanIds.length||openingLoanIds.length?await Promise.all([
@@ -188,7 +190,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       ]): [{data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}] as any;
       if(tr.error||scheduleResult.error||otr.error||osr.error){if(!cancelled)setNotice('ঋণ আদায়/কিস্তির তথ্য পড়া যায়নি: '+(tr.error?.message||scheduleResult.error?.message||otr.error?.message||osr.error?.message));setLoading(false);return;}
       if(!cancelled){
-        setMembers(mr.data||[]);setSavings(sr.data||[]);setLoans(lr.data||[]);setOpeningLoans(or.data||[]);setOpeningLoanTx(otr.data||[]);setOpeningLoanSchedule(osr.data||[]);setLoanTx(tr.data||[]);setLoanSchedule(scheduleResult.data||[]);
+        setMembers(mr.data||[]);setSavings(sr.data||[]);setOpeningSavings(openingSavingsResult.data||[]);setLoans(lr.data||[]);setOpeningLoans(or.data||[]);setOpeningLoanTx(otr.data||[]);setOpeningLoanSchedule(osr.data||[]);setLoanTx(tr.data||[]);setLoanSchedule(scheduleResult.data||[]);
         setClosures(cr.data||[]);
         setHolidayRows(hr.error?[]:hr.data||[]);
         if(!hs.error && hs.data)setFridayEnabled(Boolean(hs.data.friday_holiday_enabled));
@@ -205,8 +207,9 @@ export default function CollectionModule({samities,canDo}:Props) {
     const memberOpeningLoans=openingLoans.filter(x=>x.member_id===m.id&&x.current_status==='active'&&x.disbursement_date<=endOfMonth);
     const loanIds=memberLoans.map(x=>x.id);
     const openingIds=memberOpeningLoans.map(x=>x.id);
-    const gsOpen=memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
-    const ltsOpen=memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const openingSavingsRow=openingSavings.find(x=>x.member_id===m.id&&x.opening_date<month+'-01');
+    const gsOpen=Number(openingSavingsRow?.gs_balance||0)+memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const ltsOpen=Number(openingSavingsRow?.lts_new_balance||0)+memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const gsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='GS'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const ltsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const optionalBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='Optional'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
@@ -215,7 +218,7 @@ export default function CollectionModule({samities,canDo}:Props) {
     const loanBy=meetingDates.map(d=>loanTx.filter(x=>loanIds.includes(x.loan_id)&&x.transaction_date===d).reduce((s,x)=>s+Number(x.amount),0)+openingLoanTx.filter(x=>openingIds.includes(x.opening_loan_id)&&x.transaction_date===d).reduce((s,x)=>s+Number(x.amount),0));
     const gsTotal=gsBy.reduce((a,b)=>a+b,0),ltsTotal=ltsBy.reduce((a,b)=>a+b,0),optionalTotal=optionalBy.reduce((a,b)=>a+b,0),loanDueTotal=loanDueBy.reduce((a,b)=>a+b,0),loanTotal=loanBy.reduce((a,b)=>a+b,0);
     return {...m,gsOpen,ltsOpen,loanOpen,gsBy,ltsBy,optionalBy,loanDueBy,loanBy,gsTotal,ltsTotal,optionalTotal,loanDueTotal,loanTotal,gsClose:gsOpen+gsTotal,ltsClose:ltsOpen+ltsTotal,loanClose:Math.max(0,loanOpen-loanTotal)};
-  }),[members,savings,loans,openingLoans,openingLoanSchedule,openingLoanTx,loanTx,loanSchedule,meetingDates,month]);
+  }),[members,savings,openingSavings,loans,openingLoans,openingLoanSchedule,openingLoanTx,loanTx,loanSchedule,meetingDates,month]);
 
   const totals=rows.reduce((a,r)=>({gsOpen:a.gsOpen+r.gsOpen,ltsOpen:a.ltsOpen+r.ltsOpen,loanOpen:a.loanOpen+r.loanOpen,gsTotal:a.gsTotal+r.gsTotal,ltsTotal:a.ltsTotal+r.ltsTotal,optionalTotal:a.optionalTotal+r.optionalTotal,loanDueTotal:a.loanDueTotal+r.loanDueTotal,loanTotal:a.loanTotal+r.loanTotal,gsClose:a.gsClose+r.gsClose,ltsClose:a.ltsClose+r.ltsClose,loanClose:a.loanClose+r.loanClose}),{gsOpen:0,ltsOpen:0,loanOpen:0,gsTotal:0,ltsTotal:0,optionalTotal:0,loanDueTotal:0,loanTotal:0,gsClose:0,ltsClose:0,loanClose:0});
 
@@ -238,7 +241,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       {Number(dailyDate.slice(8,10))<=14&&<><td><select disabled={locked||!memberOptional.length} value={r.optional_enrollment_id||''} onChange={e=>updateDailyRow(i,'optional_enrollment_id',e.target.value)}><option value="">স্কিম নির্বাচন</option>{memberOptional.map(x=><option key={x.id} value={x.id}>{x.product_name_snapshot||'ঐচ্ছিক স্কিম'}</option>)}</select></td>
       <td><input type="number" min="0" step="0.01" disabled={locked||!memberOptional.length} value={r.optional_savings||0} onChange={e=>updateDailyRow(i,'optional_savings',Number(e.target.value))}/></td></>}
       <td><select disabled={locked||(!memberLoans.length&&!memberOpeningLoans.length)} value={r.opening_loan_id?'opening:'+r.opening_loan_id:r.loan_id?'new:'+r.loan_id:''} onChange={e=>{const [kind,id]=e.target.value.split(':');updateDailyRow(i,'opening_loan_id',kind==='opening'?id:'');updateDailyRow(i,'loan_id',kind==='new'?id:'');}}><option value="">ঋণ নির্বাচন</option>{memberLoans.map(x=><option key={'n'+x.id} value={'new:'+x.id}>{x.loan_no} (নতুন)</option>)}{memberOpeningLoans.map(x=><option key={'o'+x.id} value={'opening:'+x.id}>{x.loan_no} (প্রারম্ভিক)</option>)}</select></td>
-      <td><input type="number" min="0" step="0.01" disabled={locked||!memberLoans.length} value={r.loan_paid||0} onChange={e=>updateDailyRow(i,'loan_paid',Number(e.target.value))}/></td>
+      <td><input type="number" min="0" step="0.01" disabled={locked||(!memberLoans.length&&!memberOpeningLoans.length)} value={r.loan_paid||0} onChange={e=>updateDailyRow(i,'loan_paid',Number(e.target.value))}/></td>
       <td><input disabled={locked} value={r.remarks||''} onChange={e=>updateDailyRow(i,'remarks',e.target.value)}/></td></tr>;
     })}</tbody><tfoot><tr><th colSpan={3}>সর্বমোট</th>{['gs_deposit','gs_withdrawal','lts_new'].map(k=><th key={k}>{money(dailyRows.reduce((s,r)=>s+Number(r[k]||0),0))}</th>)}{Number(dailyDate.slice(8,10))<=14&&<><th>—</th><th>{money(dailyRows.reduce((s,r)=>s+Number(r.optional_savings||0),0))}</th></>}<th>—</th><th>{money(dailyRows.reduce((s,r)=>s+Number(r.loan_paid||0),0))}</th><th>—</th></tr></tfoot></table></div>:<p className="muted">{loading?'সদস্য তালিকা লোড হচ্ছে...':'এই সমিতিতে সক্রিয় সদস্য পাওয়া যায়নি।'}</p>}
     {dailyStatus==='posted'&&canCorrect&&<label>সংশোধনের কারণ *<input value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} placeholder="কেন সংশোধন করছেন লিখুন"/></label>}
