@@ -29,14 +29,17 @@ begin
   -- Calculate the complete target sequence first. This preserves weekly order
   -- and reserves paid/historical dates before any unique due_date is updated.
   for v_row in
-    select id, due_date, status, total_due, principal_paid, service_charge_paid
+    select id, due_date, status, total_due, principal_paid, service_charge_paid, week_no
     from public.loan_installment_schedule
     where loan_id = p_loan_id
     order by week_no
   loop
     v_candidate := v_row.due_date;
 
-    if v_row.status <> 'paid'
+    -- The approved loan product contains 46 installments. Never shift dates
+    -- beyond installment 46, even if legacy data has additional schedule rows.
+    if v_row.week_no <= 46
+       and v_row.status <> 'paid'
        and coalesce(v_row.principal_paid,0) + coalesce(v_row.service_charge_paid,0) < coalesce(v_row.total_due,0) - 0.005
        and v_row.due_date >= current_date then
       loop
