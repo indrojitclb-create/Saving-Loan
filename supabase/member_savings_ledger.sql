@@ -144,3 +144,85 @@ drop trigger if exists savings_transaction_audit_after_insert on public.savings_
 create trigger savings_transaction_audit_after_insert
 after insert on public.savings_transactions
 for each row execute function public.audit_savings_transaction_insert();
+
+
+-- Backward-compatible RPC for clients still using the former Savings screen.
+-- New screens write directly to the same protected ledger.
+create or replace function public.save_savings_transaction(
+  p_member_id uuid,
+  p_enrollment_id uuid,
+  p_transaction_date date,
+  p_transaction_type text,
+  p_amount numeric,
+  p_reference_no text default null,
+  p_notes text default null
+) returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_enrollment public.member_savings_enrollments%rowtype;
+  v_balance numeric(14,2);
+  v_category text;
+  v_id uuid;
+begin
+  if auth.uid() is null then raise exception 'লগইন প্রয়োজন'; end if;
+  if not public.has_module_permission('savings','create') then
+    raise exception 'সঞ্চয় লেনদেনের অনুমতি নেই';
+  end if;
+  if not public.can_access_member(p_member_id) then
+    raise exception 'এই সদস্যের তথ্য ব্যবহারের অনুমতি নেই';
+  end if;
+  if p_transaction_type not in ('deposit','withdrawal') then
+    raise exception 'লেনদেনের ধরন সঠিক নয়';
+  end if;
+  if p_amount is null or p_amount<=0 or round(p_amount,2)<>p_amount then
+    raise exception 'সঠিক টাকার পরিমাণ লিখুন';
+  end if;
+  if p_transaction_date is null or p_transaction_date>current_date then
+    raise exception 'ভবিষ্যৎ তারিখে সঞ্চয় লেনদেন করা যাবে না';
+  end if;
+
+  select * into v_enrollment
+  from public.member_savings_enrollments
+  where id=p_enrollment_id and member_id=p_member_id;
+  if not found then raise exception 'সদস্যের সঞ্চয় হিসাব নির্বাচন করুন'; end if;
+
+  v_category := case when v_enrollment.savings_type='optional' then 'Optional' else 'GS' end;
+  perform pg_advisory_xact_lock(hashtextextended(p_member_id::text || ':' || v_category,0));
+
+  select
+    coalesce((
+      select case v_category
+        when 'GS' then o.gs_balance
+        when 'Optional' then o.optional_balance
+        else 0 end
+      from public.member_savings_opening_balances o
+      where o.member_id=p_member_id and o.opening_date<=p_transaction_date
+    ),0)
+    + coalesce(sum(case when t.transaction_type='deposit' then t.amount else -t.amount end),0)
+  into v_balance
+  from public.savings_transactions t
+  where t.member_id=p_member_id
+    and t.savings_category=v_category
+    and t.transaction_date<=p_transaction_date;
+
+  if p_transaction_type='withdrawal' and p_amount>v_balance then
+    raise exception 'পর্যাপ্ত সঞ্চয় ব্যালেন্স নেই। বর্তমান ব্যালেন্স: %',v_balance;
+  end if;
+
+  insert into public.savings_transactions(
+    member_id,enrollment_id,savings_type,savings_category,transaction_date,
+    transaction_type,amount,reference_no,notes,created_by
+  ) values (
+    p_member_id,p_enrollment_id,v_enrollment.savings_type,v_category,p_transaction_date,
+    p_transaction_type,p_amount,nullif(trim(p_reference_no),''),nullif(trim(p_notes),''),auth.uid()
+  ) returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.save_savings_transaction(uuid,uuid,date,text,numeric,text,text) from public;
+grant execute on function public.save_savings_transaction(uuid,uuid,date,text,numeric,text,text) to authenticated;
