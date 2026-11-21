@@ -230,9 +230,15 @@ begin
        and member_id=v_member and savings_type='optional') then raise exception 'ঐচ্ছিক সঞ্চয় স্কিম নির্বাচন করুন'; end if;
    end if;
    if coalesce((r->>'loan_paid')::numeric,0)>0 then
-     v_loan:=nullif(r->>'loan_id','')::uuid;
-     if not exists(select 1 from public.loan_accounts where id=v_loan and member_id=v_member and status='active') then
-       raise exception 'সক্রিয় ঋণ নির্বাচন করুন'; end if;
+     v_opening_loan:=nullif(r->>'opening_loan_id','')::uuid;
+     if v_opening_loan is not null then
+       if not exists(select 1 from public.member_opening_loans where id=v_opening_loan and member_id=v_member and current_status='active') then
+         raise exception 'সক্রিয় প্রারম্ভিক ঋণ নির্বাচন করুন'; end if;
+     else
+       v_loan:=nullif(r->>'loan_id','')::uuid;
+       if not exists(select 1 from public.loan_accounts where id=v_loan and member_id=v_member and status='active') then
+         raise exception 'সক্রিয় ঋণ নির্বাচন করুন'; end if;
+     end if;
    end if;
  end loop;
 
