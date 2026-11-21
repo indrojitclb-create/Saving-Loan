@@ -27,6 +27,26 @@ create index if not exists daily_collection_samity_date_idx
 -- Each generated ledger row is traceable to the daily sheet that created it.
 alter table public.savings_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+create table if not exists public.member_opening_loan_transactions (
+ id uuid primary key default gen_random_uuid(),
+ opening_loan_id uuid not null references public.member_opening_loans(id) on delete restrict,
+ transaction_date date not null,
+ amount numeric(14,2) not null check(amount>0),
+ installment_no integer,
+ created_by uuid not null references public.profiles(id),
+ collection_sheet_id uuid references public.daily_collection_sheets(id) on delete cascade,
+ created_at timestamptz not null default now()
+);
+create index if not exists opening_loan_tx_date_idx on public.member_opening_loan_transactions(opening_loan_id,transaction_date);
+alter table public.member_opening_loan_transactions enable row level security;
+drop policy if exists opening_loan_tx_read on public.member_opening_loan_transactions;
+create policy opening_loan_tx_read on public.member_opening_loan_transactions for select to authenticated using (
+ exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
+);
+drop policy if exists opening_loan_tx_insert on public.member_opening_loan_transactions;
+create policy opening_loan_tx_insert on public.member_opening_loan_transactions for insert to authenticated with check (
+ created_by=(select auth.uid()) and exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
+);
 alter table public.loan_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
 alter table public.savings_transactions drop constraint if exists savings_transactions_savings_category_check;
@@ -151,7 +171,7 @@ create or replace function public.save_daily_collection(
 declare
  v_sheet public.daily_collection_sheets%rowtype; v_branch uuid; v_role text; v_allowed boolean;
  r jsonb; v_member uuid; v_amt numeric(14,2); v_left numeric(14,2);
- sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid;
+ sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid; v_opening_loan uuid;
 begin
  if auth.uid() is null or jsonb_typeof(p_rows)<>'array' or p_action not in ('draft','post') then
    raise exception 'সঠিক আদায় তথ্য দিন';
