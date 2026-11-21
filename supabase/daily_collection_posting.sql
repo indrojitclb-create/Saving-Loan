@@ -27,10 +27,18 @@ create index if not exists daily_collection_samity_date_idx
 -- Ensure the shared savings ledger columns exist before daily posting policies/RPCs.
 -- optional_savings_versions.sql must run first because enrollment_id references its table.
 alter table public.savings_transactions
-  add column if not exists savings_category text not null default 'GS',
+  add column if not exists savings_category text,
   add column if not exists savings_type text not null default 'mandatory'
     check (savings_type in ('mandatory','optional')),
   add column if not exists enrollment_id uuid references public.member_savings_enrollments(id) on delete restrict;
+
+-- Preserve the older mandatory/optional ledger classification when upgrading.
+update public.savings_transactions
+set savings_category = case when savings_type = 'optional' then 'Optional' else 'GS' end
+where savings_category is null;
+alter table public.savings_transactions
+  alter column savings_category set default 'GS',
+  alter column savings_category set not null;
 
 -- Each generated ledger row is traceable to the daily sheet that created it.
 alter table public.savings_transactions
