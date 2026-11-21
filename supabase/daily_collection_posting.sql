@@ -83,7 +83,7 @@ alter table public.collection_month_closures enable row level security;
 create or replace function public.can_access_collection_samity(
   p_samity_id uuid, p_collection_date date
 ) returns boolean
-language plpgsql stable security definer set search_path=public as $
+language plpgsql stable security definer set search_path=public as $collection_scope$
 declare v_role text; v_employee uuid; v_branch uuid;
 begin
   select role::text, employee_id into v_role, v_employee
@@ -99,7 +99,7 @@ begin
         and (a.assigned_to is null or a.assigned_to>=p_collection_date));
   end if;
   return public.can_access_branch(v_branch);
-end $;
+end $collection_scope$;
 
 drop policy if exists daily_collection_read on public.daily_collection_sheets;
 create policy daily_collection_read on public.daily_collection_sheets
