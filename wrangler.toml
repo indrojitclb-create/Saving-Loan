@@ -1,0 +1,9 @@
+# Cloudflare Wrangler configuration for the Vite-built application.
+name = "saving-loan"
+compatibility_date = "2026-11-21"
+
+[assets]
+directory = "./dist"
+
+# Required by `npx wrangler preview` for preview deployments.
+[previews]
