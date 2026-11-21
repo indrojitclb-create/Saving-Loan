@@ -99,10 +99,23 @@ export default function CollectionModule({samities,canDo}:Props) {
     if(!window.confirm('এই সমিতির আজকের আদায় সিটের Day End করবেন?'))return;
     setDailyBusy(true);const {error}=await supabase.rpc('close_daily_collection',{p_sheet_id:dailySheetId});setDailyBusy(false);
     if(error){setNotice('Day End হয়নি: '+error.message);return;}
-    setDailyStatus('closed');setNotice('Day End সম্পন্ন হয়েছে। পরবর্তী সভার দিনের সিটে নেওয়া হচ্ছে।');
-    const next=new Date(dailyDate+'T12:00:00');const weekday=Number(selectedSamity?.meeting_day);
-    do{next.setDate(next.getDate()+1);}while(next.getDay()!==weekday);
-    setDailyDate(dateText(next));
+    setDailyStatus('closed');
+    const remaining=dailySamities.filter(x=>x.id!==samityId);
+    let pending:any[]=[];
+    if(remaining.length){
+      const {data:closedRows}=await supabase.from('daily_collection_sheets').select('samity_id,status')
+        .eq('collection_date',dailyDate).in('samity_id',remaining.map(x=>x.id));
+      const done=new Set((closedRows||[]).filter(x=>x.status==='closed').map(x=>x.samity_id));
+      pending=remaining.filter(x=>!done.has(x.id));
+    }
+    if(pending.length){
+      setSamityId(pending[0].id);
+      setNotice('এই তারিখের একটি সমিতির Day End সম্পন্ন। একই দিনের পরবর্তী সমিতি নির্বাচন করা হয়েছে।');
+    }else{
+      const next=new Date(dailyDate+'T12:00:00');next.setDate(next.getDate()+1);
+      setSamityId('');setDailyDate(dateText(next));
+      setNotice('আজকের সব দৃশ্যমান সমিতির Day End সম্পন্ন। পরবর্তী দিনের আদায় সিট প্রস্তুত।');
+    }
   }
   async function closeMonth(){
     if(!supabase||!selectedSamity?.branch_id)return;
