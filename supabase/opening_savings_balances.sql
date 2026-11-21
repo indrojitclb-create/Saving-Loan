@@ -1,5 +1,7 @@
 -- Opening Savings Balance (Opening Data Input)
 -- Initial balances remain separate from the regular transaction ledger.
+-- Apply after schema.sql, security.sql, assistant_admin.sql,
+-- member_registration.sql and optional_savings_versions.sql.
 create table if not exists public.member_savings_opening_balances (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members(id) on delete restrict,
