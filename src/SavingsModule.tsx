@@ -31,6 +31,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [transactions, setTransactions] = useState<Tx[]>([]);
   const [opening, setOpening] = useState<OpeningBalance | null>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [optionalEnrollmentId, setOptionalEnrollmentId] = useState('');
   const [category, setCategory] = useState<'GS'|'LTS-New'|'Optional'>('GS');
   const [transactionType, setTransactionType] = useState<'deposit'|'withdrawal'>('deposit');
   const [transactionDate, setTransactionDate] = useState(todayText());
@@ -156,7 +157,14 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     });
     return result;
   }, [transactions, opening]);
-  const optionalEnrolled = enrollments.some(x => x.savings_type === 'optional');
+  const optionalEnrollments = enrollments.filter(x => x.savings_type === 'optional');
+  const optionalEnrolled = optionalEnrollments.length > 0;
+
+  useEffect(() => {
+    if (!optionalEnrollments.some(x => x.id === optionalEnrollmentId)) {
+      setOptionalEnrollmentId(optionalEnrollments[0]?.id || '');
+    }
+  }, [memberId, enrollments]);
   const visibleMembers = members.filter(m => {
     const term = search.trim().toLowerCase();
     return !term || m.member_code.toLowerCase().includes(term) || m.full_name.toLowerCase().includes(term);
@@ -173,8 +181,8 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if (transactionType === 'withdrawal' && value > selectedBalance) {
       setNotice('উত্তোলনের পরিমাণ বর্তমান স্থিতির বেশি হতে পারবে না।'); return;
     }
-    if (category === 'Optional' && !optionalEnrolled) {
-      setNotice('এই সদস্য Optional Savings-এ অন্তর্ভুক্ত নন।'); return;
+    if (category === 'Optional' && (!optionalEnrolled || !optionalEnrollmentId)) {
+      setNotice('এই সদস্যের Optional Savings স্কিম নির্বাচন করুন।'); return;
     }
     setBusy(true);
     const result = await supabase.from('savings_transactions').insert({
@@ -183,6 +191,8 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       transaction_type: transactionType,
       amount: value,
       savings_category: category,
+      savings_type: category === 'Optional' ? 'optional' : 'mandatory',
+      enrollment_id: category === 'Optional' ? optionalEnrollmentId : null,
       reference_no: referenceNo.trim() || null,
       notes: notes.trim() || null,
       created_by: userId,
@@ -352,6 +362,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         <div className="form-grid">
           <label>লেনদেনের ধরন *<select value={transactionType} onChange={e=>setTransactionType(e.target.value as 'deposit'|'withdrawal')}><option value="deposit">জমা</option><option value="withdrawal">উত্তোলন</option></select></label>
           <label>সঞ্চয়ের ধরন *<select value={category} onChange={e=>setCategory(e.target.value as 'GS'|'LTS-New'|'Optional')}><option value="GS">General Savings (GS)</option><option value="LTS-New">LTS-New</option><option value="Optional" disabled={!optionalEnrolled}>Optional Savings{!optionalEnrolled?' (সদস্য অন্তর্ভুক্ত নন)':''}</option></select></label>
+          {category === 'Optional' && <label>Optional Savings স্কিম *<select required value={optionalEnrollmentId} onChange={e=>setOptionalEnrollmentId(e.target.value)}><option value="">স্কিম নির্বাচন</option>{optionalEnrollments.map((x:any)=><option key={x.id} value={x.id}>{x.product_name_snapshot || 'Optional Savings'} — ৳{Number(x.amount||0).toLocaleString('en-BD')}</option>)}</select></label>}
           <label>তারিখ *<input type="date" required value={transactionDate} onChange={e=>setTransactionDate(e.target.value)} /></label>
           <label>টাকার পরিমাণ *<input type="number" min="0.01" step="0.01" required value={amount} onChange={e=>setAmount(e.target.value)} placeholder="টাকার পরিমাণ"/></label>
           <label>রেফারেন্স নম্বর<input value={referenceNo} onChange={e=>setReferenceNo(e.target.value)} placeholder="রসিদ/ভাউচার নম্বর"/></label>
