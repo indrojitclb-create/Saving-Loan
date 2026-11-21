@@ -66,8 +66,8 @@ drop policy if exists collection_month_closure_read on public.collection_month_c
 create policy collection_month_closure_read on public.collection_month_closures
 for select to authenticated using (public.can_access_branch(branch_id));
 
-create or replace function public.can_post_collection(p_samity_id uuid)
-returns boolean language plpgsql stable security definer set search_path=public as $$
+create or replace function public.can_post_collection(p_samity_id uuid,p_collection_date date)
+returns boolean language plpgsql stable security definer set search_path=public as $
 declare v_role text; v_branch uuid; v_employee uuid;
 begin
   select role::text, branch_id, employee_id into v_role, v_branch, v_employee
@@ -84,8 +84,8 @@ begin
     return exists(select 1 from public.profiles p
       join public.samity_employee_assignments a on a.employee_id=p.employee_id
       where p.id=auth.uid() and p.is_active and a.samity_id=p_samity_id
-        and a.is_active and a.assigned_from<=current_date
-        and (a.assigned_to is null or a.assigned_to>=current_date));
+        and a.is_active and a.assigned_from<=p_collection_date
+        and (a.assigned_to is null or a.assigned_to>=p_collection_date));
   end if;
   return false;
 end $$;
@@ -103,7 +103,7 @@ begin
   if auth.uid() is null or jsonb_typeof(p_rows)<>'array' then
     raise exception 'সঠিক আদায় তথ্য দিন';
   end if;
-  if not public.can_post_collection(p_samity_id) then
+  if not public.can_post_collection(p_samity_id,p_collection_date) then
     raise exception 'এই সমিতিতে আদায় পোস্ট করার অনুমতি নেই';
   end if;
   select branch_id into v_branch from public.samities
@@ -153,6 +153,7 @@ begin
   returning id into v_sheet.id;
   return v_sheet.id;
 end $$;
+grant execute on function public.can_post_collection(uuid,date) to authenticated;
 grant execute on function public.save_daily_collection(uuid,date,jsonb,text,text) to authenticated;
 
 create or replace function public.close_daily_collection(p_sheet_id uuid)
