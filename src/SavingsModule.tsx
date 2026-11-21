@@ -78,6 +78,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         setTransactions([]);
         setOpening(null);
         setEnrollments([]);
+        setOpeningLoans([]);
         return;
       }
       setLoading(true);
@@ -97,6 +98,14 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       else setEnrollments(enrollmentResult.data || []);
       if (openingResult.error) setNotice('Opening Balance পড়া যায়নি: ' + openingResult.error.message);
       else setOpening(openingResult.data || null);
+      if (openingOnly) {
+        const loanResult = await supabase.from('member_opening_loans').select('*').eq('member_id', memberId).order('disbursement_date', { ascending: false });
+        if (!live) return;
+        if (loanResult.error) setNotice('প্রারম্ভিক ঋণের তথ্য পড়া যায়নি: ' + loanResult.error.message);
+        else setOpeningLoans((loanResult.data || []) as OpeningLoan[]);
+      } else {
+        setOpeningLoans([]);
+      }
       setLoading(false);
     })();
     return () => { live = false; };
