@@ -290,9 +290,8 @@ begin
        values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'GS',v_sheet.id); end if;
      v_amt:=coalesce((r->>'gs_withdrawal')::numeric,0);
      if v_amt>0 then
-       if v_amt>coalesce((select sum(case when transaction_type='deposit' then amount else -amount end)
-         from public.savings_transactions where member_id=v_member and savings_category='GS'
-         and transaction_date<=p_collection_date),0) then raise exception 'GS স্থিতির চেয়ে বেশি উত্তোলন করা যাবে না'; end if;
+       -- The shared savings-ledger trigger checks opening balance plus dated ledger
+       -- transactions under a per-member/category lock, including concurrent postings.
        insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
          values(v_member,p_collection_date,'withdrawal',v_amt,auth.uid(),'GS',v_sheet.id);
      end if;
