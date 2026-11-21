@@ -96,6 +96,18 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     return () => { live = false; };
   }, [memberId]);
 
+  useEffect(() => {
+    setOpeningForm(opening ? {
+      gs: String(opening.gs_balance ?? 0),
+      lts: String(opening.lts_new_balance ?? 0),
+      optional: String(opening.optional_balance ?? 0),
+      date: opening.opening_date || todayText(),
+      reference: '',
+      notes: '',
+    } : {gs:'0',lts:'0',optional:'0',date:todayText(),reference:'',notes:''});
+    setOpeningNotice('');
+  }, [opening, memberId]);
+
   const selectedMember = members.find(m => m.id === memberId);
   const samity = samities.find(s => s.id === selectedMember?.samity_id);
   const balances = useMemo(() => {
