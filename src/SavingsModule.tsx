@@ -12,7 +12,7 @@ type Props = {
   canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean;
 };
 
-type Member = { id: string; member_code: string; full_name: string; samity_id: string | null; branch_id: string | null; is_active: boolean };
+type Member = { id: string; member_code: string; full_name: string; samity_id: string | null; branch_id: string | null; is_active: boolean; [key:string]: any };
 type Tx = { id: string; member_id: string; transaction_date: string; transaction_type: 'deposit'|'withdrawal'; amount: number; savings_category: 'GS'|'LTS-New'|'Optional'; reference_no: string | null; notes: string | null };
 const categories = [
   { value: 'GS', label: 'General Savings (GS)' },
@@ -28,6 +28,7 @@ const money = (n: number) => '৳' + Number(n || 0).toLocaleString('en-BD', { mi
 export default function SavingsModule({ samities, canDo, openingOnly = false }: Props) {
   const [members, setMembers] = useState<Member[]>([]);
   const [memberId, setMemberId] = useState('');
+  const [openingTab,setOpeningTab]=useState<'member'|'savings'|'loan'>('savings');
   const [transactions, setTransactions] = useState<Tx[]>([]);
   const [opening, setOpening] = useState<OpeningBalance | null>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -68,7 +69,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       setLoading(true);
       const [{ data: auth }, memberResult] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from('members').select('id,member_code,full_name,samity_id,branch_id,is_active').eq('is_active',true).order('member_code'),
+        supabase.from('members').select('*').eq('is_active',true).order('member_code'),
       ]);
       if (!live) return;
       setUserId(auth.user?.id || '');
@@ -319,7 +320,9 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
           {categories.map(c=><div className="stat-card" key={c.value}><span>{c.label}</span><strong>{money(balances[c.value])}</strong></div>)}
         </div>
       </div>
-      {openingOnly && (canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
+      {openingOnly && <div className="form-actions" style={{margin:'16px 0'}}><button type="button" className={openingTab==='member'?'':'secondary'} onClick={()=>setOpeningTab('member')}>সদস্যের সার্বিক তথ্য</button><button type="button" className={openingTab==='savings'?'':'secondary'} onClick={()=>setOpeningTab('savings')}>সঞ্চয় ওপেনিং</button><button type="button" className={openingTab==='loan'?'':'secondary'} onClick={()=>setOpeningTab('loan')}>ঋণ ওপেনিং</button></div>}
+      {openingOnly && openingTab==='member' && <section className="panel"><h3>সদস্যের সার্বিক তথ্য</h3><p className="muted">এখানে শুধু আগে থেকে নিবন্ধিত সদস্যের তথ্য দেখা যাবে। নতুন সদস্য ভর্তি এই মডিউলে করা যাবে না।</p><div className="stats-grid"><div className="stat-card"><span>সদস্য কোড</span><strong>{selectedMember.member_code}</strong></div><div className="stat-card"><span>সদস্যের নাম</span><strong>{selectedMember.full_name}</strong></div><div className="stat-card"><span>মোবাইল</span><strong>{selectedMember.phone||'—'}</strong></div></div><div className="form-grid">{[['পিতার নাম','father_name'],['মাতার নাম','mother_name'],['স্বামী/স্ত্রীর নাম','spouse_name'],['ভর্তির তারিখ','admission_date'],['জন্ম তারিখ','date_of_birth'],['বৈবাহিক অবস্থা','marital_status'],['শিক্ষাগত যোগ্যতা','education_level'],['জাতীয়তা','nationality'],['জাতীয় পরিচয়পত্র','national_id'],['জন্ম নিবন্ধন','birth_registration_no'],['পেশা','profession'],['ধর্ম','religion'],['সদস্যের ধরন','member_type'],['বর্তমান ঠিকানা','present_house_street'],['স্থায়ী ঠিকানা','permanent_house_street']].map(([label,key])=><label key={key}>{label}<input readOnly value={selectedMember[key]??'—'}/></label>)}</div></section>}
+      {openingOnly && openingTab==='savings' && (canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
         <h3>Opening Data Input — প্রারম্ভিক সঞ্চয় স্থিতি</h3>
         <p className="muted">প্রারম্ভিক GS, LTS-New ও Optional ব্যালেন্স আলাদা সংরক্ষণ হবে।</p>
         <div className="form-grid">
@@ -336,7 +339,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         {openingNotice && <div className="notice">{openingNotice}</div>}
         <div className="form-actions"><button disabled={openingBusy||!memberId}>{openingBusy?'সংরক্ষণ হচ্ছে...':'Opening Balance সংরক্ষণ'}</button></div>
       </form>}
-      {openingOnly && <section className="panel">
+      {openingOnly && openingTab==='loan' && <section className="panel">
         <h3>প্রারম্ভিক ঋণের তথ্য</h3>
         <p className="muted">প্রতিটি পুরোনো ঋণ আলাদা করে এন্ট্রি করুন। অবশিষ্ট স্থিতি আসল ঋণ + সেবামূল্য − এ পর্যন্ত আদায় থেকে হিসাব হবে। বকেয়া স্থিতি আলাদাভাবে লিখতে হবে।</p>
         {(canDo('opening_data','create')||canDo('opening_data','update'))&&<form className="employee-form" onSubmit={saveOpeningLoan}>
