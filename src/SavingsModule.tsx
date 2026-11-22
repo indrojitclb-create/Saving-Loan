@@ -170,9 +170,9 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     const phone = (memberEditForm.phone || '').trim();
     const smartId = (memberEditForm.smart_id || '').trim();
     const nationalId = (memberEditForm.national_id || '').trim();
-    if (phone && !/^01[3-9]\\d{8}$/.test(phone)) { setMemberEditNotice('মোবাইল নম্বর ১১ ডিজিটের সঠিক বাংলাদেশি নম্বর হতে হবে।'); return; }
-    if (smartId && !/^\\d{10}$/.test(smartId)) { setMemberEditNotice('স্মার্ট আইডি অবশ্যই ১০ ডিজিট হতে হবে।'); return; }
-    if (nationalId && !/^\\d{17}$/.test(nationalId)) { setMemberEditNotice('জাতীয় পরিচয়পত্র অবশ্যই ১৭ ডিজিট হতে হবে।'); return; }
+    if (phone && !/^01[3-9]\d{8}$/.test(phone)) { setMemberEditNotice('মোবাইল নম্বর ১১ ডিজিটের সঠিক বাংলাদেশি নম্বর হতে হবে।'); return; }
+    if (smartId && !/^\d{10}$/.test(smartId)) { setMemberEditNotice('স্মার্ট আইডি অবশ্যই ১০ ডিজিট হতে হবে।'); return; }
+    if (nationalId && !/^\d{17}$/.test(nationalId)) { setMemberEditNotice('জাতীয় পরিচয়পত্র অবশ্যই ১৭ ডিজিট হতে হবে।'); return; }
     for (const key of ['family_member_count','yearly_income','land_area']) {
       const value = memberEditForm[key];
       if (value !== '' && (!Number.isFinite(Number(value)) || Number(value) < 0)) { setMemberEditNotice('পরিবারের সদস্য সংখ্যা, বার্ষিক আয় ও জমির পরিমাণে শূন্য বা তার বেশি সঠিক সংখ্যা দিন।'); return; }
