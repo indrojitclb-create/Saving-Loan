@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import * as pdfjsLib from 'pdfjs-dist';\nimport pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';\npdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 import { supabase } from './lib/supabase';
 import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
@@ -136,7 +138,9 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         if(!code)error='সদস্য কোড নেই';
         else if(tab!=='loan'&&seen.has(code.toLowerCase()))error='ফাইলে একই সদস্য কোড একাধিকবার আছে';
         else if(!member)error='এই সদস্য কোডের কোনো নিবন্ধিত সদস্য নেই';
-        const duplicateKey=tab==='loan'?code.toLowerCase()+'|'+String(data.loan_no||'').trim().toLowerCase():code.toLowerCase();\n        if(tab==='loan'&&seen.has(duplicateKey))error='একই সদস্যের একই ঋণ নম্বর একাধিকবার আছে';\n        seen.add(duplicateKey);
+        const duplicateKey=tab==='loan'?code.toLowerCase()+'|'+String(data.loan_no||'').trim().toLowerCase():code.toLowerCase();
+        if(tab==='loan'&&seen.has(duplicateKey))error='একই সদস্যের একই ঋণ নম্বর একাধিকবার আছে';
+        seen.add(duplicateKey);
         if(tab==='member'){
           if(member && data.phone && !/^01[3-9]\\d{8}$/.test(String(data.phone).trim()))error='মোবাইল নম্বর ১১ ডিজিট হতে হবে';
           if(member && data.smart_id && !/^\\d{10}$/.test(String(data.smart_id).trim()))error='Smart ID ১০ ডিজিট হতে হবে';
@@ -230,7 +234,10 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
               nextDate=dates[0]||null;
             }catch(err){errors.push('লাইন '+r.line+': '+(err instanceof Error?err.message:'কিস্তি সিডিউল তৈরি হয়নি'));continue;}
           }
-          const duplicate=await supabase.from('member_opening_loans').select('id').eq('member_id',r.member_id).eq('loan_no',String(d.loan_no).trim()).maybeSingle();\n          if(duplicate.error){errors.push('লাইন '+r.line+': '+duplicate.error.message);continue;}\n          if(duplicate.data){errors.push('লাইন '+r.line+': এই সদস্যের এই ঋণ নম্বর আগে থেকেই আছে; নতুন রেকর্ড যোগ করা হয়নি');continue;}\n          const inserted=await supabase.from('member_opening_loans').insert({
+          const duplicate=await supabase.from('member_opening_loans').select('id').eq('member_id',r.member_id).eq('loan_no',String(d.loan_no).trim()).maybeSingle();
+          if(duplicate.error){errors.push('লাইন '+r.line+': '+duplicate.error.message);continue;}
+          if(duplicate.data){errors.push('লাইন '+r.line+': এই সদস্যের এই ঋণ নম্বর আগে থেকেই আছে; নতুন রেকর্ড যোগ করা হয়নি');continue;}
+          const inserted=await supabase.from('member_opening_loans').insert({
             member_id:r.member_id,loan_no:String(d.loan_no).trim(),disbursement_date:dateValue(d.disbursement_date),project_name:String(d.project_name).trim(),loan_cycle:cycle,
             principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:status,overdue_balance:arrears,last_installment_no:last,
             last_installment_date:last?dateValue(d.last_installment_date):null,next_installment_date:nextDate,next_collectible_balance:collectible,
