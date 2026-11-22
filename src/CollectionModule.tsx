@@ -186,7 +186,7 @@ export default function CollectionModule({samities,canDo}:Props) {
         supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount').in('loan_id',loanIds).lte('transaction_date',end).order('transaction_date'),
         supabase.from('loan_installment_schedule').select('id,loan_id,week_no,due_date,total_due,principal_paid,service_charge_paid,status').in('loan_id',loanIds.length?loanIds:['00000000-0000-0000-0000-000000000000']).gte('due_date',start).lte('due_date',end).order('due_date'),
         openingLoanIds.length?supabase.from('member_opening_loan_transactions').select('id,opening_loan_id,transaction_date,amount').in('opening_loan_id',openingLoanIds).order('transaction_date'):Promise.resolve({data:[],error:null}),
-        openingLoanIds.length?supabase.from('member_opening_loan_installment_schedule').select('id,opening_loan_id,installment_no,due_date,total_due,status').in('opening_loan_id',openingLoanIds).gte('due_date',start).lte('due_date',end).order('due_date'):Promise.resolve({data:[],error:null})
+        openingLoanIds.length?supabase.from('member_opening_loan_installment_schedule').select('id,opening_loan_id,installment_no,due_date,total_due,status').in('opening_loan_id',openingLoanIds).eq('is_current',true).gte('due_date',start).lte('due_date',end).order('due_date'):Promise.resolve({data:[],error:null})
       ]): [{data:[],error:null},{data:[],error:null},{data:[],error:null},{data:[],error:null}] as any;
       if(tr.error||scheduleResult.error||otr.error||osr.error){if(!cancelled)setNotice('ঋণ আদায়/কিস্তির তথ্য পড়া যায়নি: '+(tr.error?.message||scheduleResult.error?.message||otr.error?.message||osr.error?.message));setLoading(false);return;}
       if(!cancelled){
