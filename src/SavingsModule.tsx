@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { supabase } from './lib/supabase';\nimport OpeningDataImport from './OpeningDataImport';
+import { supabase } from './lib/supabase';
+import OpeningDataImport from './OpeningDataImport';
 import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
 type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string; optional_opening_date?: string | null; optional_monthly_installment_amount?: number | null; optional_installments_paid?: number | null };
@@ -368,7 +369,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if(!supabase)return;
     if(openingTab==='member'){
       const refreshed=await supabase.from('members').select('*').eq('is_active',true).order('member_code');
-      if(!refreshed.error){setMembers(refreshed.data||[]);const updated=(refreshed.data||[]).find((m:any)=>m.id===memberId);if(updated)setMemberEditForm(old=>({...old,...Object.fromEntries(Object.keys(old).map(k=>[k,String(updated[k]??'')))}));}
+      if(!refreshed.error){setMembers(refreshed.data||[]);const updated=(refreshed.data||[]).find((m:any)=>m.id===memberId);if(updated)setMemberEditForm(old=>({...old,...Object.fromEntries(Object.keys(old).map(k=>[k,String(updated[k]??'')]))}));}
     }else if(openingTab==='savings'){
       const refreshed=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date,optional_monthly_installment_amount,optional_installments_paid').eq('member_id',memberId).maybeSingle();
       if(!refreshed.error)setOpening(refreshed.data||null);
