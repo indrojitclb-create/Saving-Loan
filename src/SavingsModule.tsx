@@ -346,20 +346,11 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     }
     if(loanForm.current_status==='closed'&&remainingBalance>0){setLoanNotice('ঋণের অবশিষ্ট স্থিতি শূন্য না হলে বন্ধ করা যাবে না।');return;}
     setLoanBusy(true);
-    const payload:any={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,...(editingLoanId?{updated_by:userId}:{created_by:userId})};
-    const payloadWithDates={...payload,next_installment_date:nextInstallmentDate,next_collectible_balance:nextCollectibleBalance};
-    const result=editingLoanId?await supabase.from('member_opening_loans').update(payloadWithDates).eq('id',editingLoanId):await supabase.from('member_opening_loans').insert(payloadWithDates).select('id').single();
+    const payloadWithDates={member_id:memberId,loan_no:loanForm.loan_no.trim(),disbursement_date:loanForm.disbursement_date,project_name:loanForm.project_name.trim(),loan_cycle:cycle,principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:loanForm.current_status,overdue_balance:arrears,last_installment_no:last,last_installment_date:loanForm.last_installment_date||null,reference_no:loanForm.reference_no.trim()||null,notes:loanForm.notes.trim()||null,next_installment_date:nextInstallmentDate,next_collectible_balance:nextCollectibleBalance};
+    const result=await supabase.rpc('save_opening_loan_with_schedule',{p_loan_id:editingLoanId||null,p_loan:payloadWithDates,p_schedule:generatedSchedule});
     setLoanBusy(false);
-    if(result.error){setLoanNotice('ঋণের তথ্য সংরক্ষণ হয়নি: '+result.error.message);return;}
-    const savedLoanId=editingLoanId||result.data?.id;
-    if(savedLoanId){
-      const deleted=await supabase.from('member_opening_loan_installment_schedule').delete().eq('opening_loan_id',savedLoanId);
-      if(deleted.error){setLoanNotice('ঋণের তথ্য সংরক্ষিত হয়েছে, কিন্তু পুরোনো সিডিউল পরিবর্তন করা যায়নি: '+deleted.error.message);return;}
-      if(generatedSchedule.length){
-        const inserted=await supabase.from('member_opening_loan_installment_schedule').insert(generatedSchedule.map(row=>({...row,opening_loan_id:savedLoanId})));
-        if(inserted.error){setLoanNotice('ঋণের তথ্য সংরক্ষিত হয়েছে, কিন্তু সিডিউল সংরক্ষণ হয়নি: '+inserted.error.message);return;}
-      }
-    }
+    if(result.error){setLoanNotice('ঋণ ও কিস্তির সিডিউল সংরক্ষণ হয়নি: '+result.error.message);return;}
+    const savedLoanId=result.data;
     setLoanNotice('প্রারম্ভিক ঋণের তথ্য ও অবশিষ্ট কিস্তির সিডিউল সংরক্ষিত হয়েছে।');resetLoanForm();
     const refreshed=await supabase.from('member_opening_loans').select('*').eq('member_id',memberId).order('disbursement_date',{ascending:false});
     if(!refreshed.error)setOpeningLoans((refreshed.data||[]) as OpeningLoan[]);
