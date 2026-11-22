@@ -129,7 +129,7 @@ AS $function$
 declare
  v_sheet public.daily_collection_sheets%rowtype; v_branch uuid; v_role text; v_allowed boolean;
  r jsonb; v_member uuid; v_amt numeric(14,2); v_left numeric(14,2);
- sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid; v_opening_loan uuid;
+ sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid; v_opening_loan uuid; v_opening_ids uuid[];
 begin
  if auth.uid() is null or jsonb_typeof(p_rows)<>'array' or p_action not in ('draft','post') then
    raise exception 'সঠিক আদায় তথ্য দিন';
@@ -202,9 +202,27 @@ begin
      from (select opening_loan_id,sum(amount) paid,sum(arrears_applied) arrears
        from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id group by opening_loan_id) x
      where l.id=x.opening_loan_id;
+     select array_agg(distinct x.opening_loan_id) into v_opening_ids
+       from (
+         select nullif(value->>'opening_loan_id','')::uuid as opening_loan_id
+           from jsonb_array_elements(coalesce(v_sheet.rows,'[]'::jsonb))
+         union all
+         select nullif(value->>'opening_loan_id','')::uuid
+           from jsonb_array_elements(coalesce(p_rows,'[]'::jsonb))
+       ) x
+      where x.opening_loan_id is not null;
      delete from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id;
      delete from public.savings_transactions where collection_sheet_id=v_sheet.id;
      delete from public.loan_transactions where collection_sheet_id=v_sheet.id;
+     update public.member_opening_loan_installment_schedule s
+        set status = case
+          when coalesce((select sum(t.amount) from public.member_opening_loan_transactions t
+                         where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no),0) >= s.total_due then 'paid'
+          when coalesce((select sum(t.amount) from public.member_opening_loan_transactions t
+                         where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no),0) > 0 then 'partial'
+          when s.due_date < current_date then 'overdue'
+          else 'due' end
+      where s.is_current and s.opening_loan_id = any(coalesce(v_opening_ids,'{}'::uuid[]));
      update public.loan_installment_schedule s set
        principal_paid=coalesce((select sum(t.principal_paid) from public.loan_transactions t where t.schedule_id=s.id),0),
        service_charge_paid=coalesce((select sum(t.interest_paid) from public.loan_transactions t where t.schedule_id=s.id),0),
