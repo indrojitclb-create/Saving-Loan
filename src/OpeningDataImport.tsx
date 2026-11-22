@@ -131,7 +131,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
       const seen=new Set<string>();
       const parsed:ImportRow[]=matrix.slice(1).map((cells:any[],i)=>{
         const data:Record<string,any>={};
-        headers.forEach((k,j)=>{if(k)data[k]=cells[j]??'';});
+        headers.forEach((k: string | undefined,j: number)=>{if(k)data[k]=cells[j]??'';});
         const code=String(data.member_code??'').trim();
         const member=existing.get(code.toLowerCase());
         let error='';
