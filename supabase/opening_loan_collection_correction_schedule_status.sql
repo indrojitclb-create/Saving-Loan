@@ -10,6 +10,7 @@ declare
  v_sheet public.daily_collection_sheets%rowtype; v_branch uuid; v_role text; v_allowed boolean;
  r jsonb; v_member uuid; v_amt numeric(14,2); v_left numeric(14,2);
  sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid; v_opening_loan uuid; v_opening_ids uuid[];
+ opening_sc record; v_opening_arrears_left numeric(14,2); v_opening_applied numeric(14,2);
 begin
  if auth.uid() is null or jsonb_typeof(p_rows)<>'array' or p_action not in ('draft','post') then
    raise exception 'সঠিক আদায় তথ্য দিন';
@@ -149,25 +150,47 @@ begin
          select greatest(0,outstanding_balance) into v_amt from public.member_opening_loans
            where id=v_opening_loan and member_id=v_member and current_status='active' for update;
          if v_amt is null or v_left>v_amt then raise exception 'প্রারম্ভিক ঋণের অবশিষ্ট স্থিতির চেয়ে বেশি আদায়'; end if;
-         insert into public.member_opening_loan_transactions(opening_loan_id,transaction_date,amount,arrears_applied,installment_no,created_by,collection_sheet_id)
-           select v_opening_loan,p_collection_date,v_left,least(overdue_balance,v_left),
-             (select min(installment_no) from public.member_opening_loan_installment_schedule where opening_loan_id=v_opening_loan and is_current and status<>'paid' and due_date<=p_collection_date),
-             auth.uid(),v_sheet.id from public.member_opening_loans where id=v_opening_loan;
+         -- Allocate one receipt across installments in due-date order.
+         v_opening_arrears_left := (select overdue_balance from public.member_opening_loans where id=v_opening_loan);
+         for opening_sc in
+           select * from public.member_opening_loan_installment_schedule
+            where opening_loan_id=v_opening_loan and is_current and status<>'paid'
+            order by due_date, installment_no
+            for update
+         loop
+           exit when v_left<=0;
+           v_opening_applied := least(v_left, greatest(0, opening_sc.total_due -
+             coalesce((select sum(t.amount) from public.member_opening_loan_transactions t
+               where t.opening_loan_id=v_opening_loan and t.installment_no=opening_sc.installment_no),0)));
+           if v_opening_applied<=0 then continue; end if;
+           insert into public.member_opening_loan_transactions
+             (opening_loan_id,transaction_date,amount,arrears_applied,installment_no,created_by,collection_sheet_id)
+           values (v_opening_loan,p_collection_date,v_opening_applied,
+             least(v_opening_arrears_left,v_opening_applied),opening_sc.installment_no,auth.uid(),v_sheet.id);
+           v_opening_arrears_left := greatest(0,v_opening_arrears_left-v_opening_applied);
+           v_left := v_left-v_opening_applied;
+         end loop;
+         if v_left>0 then
+           raise exception 'কিস্তির তফসিলে অবশিষ্ট আদায়ের জন্য পর্যাপ্ত কিস্তি নেই';
+         end if;
+         v_amt := coalesce((select sum(amount) from public.member_opening_loan_transactions
+           where collection_sheet_id=v_sheet.id and opening_loan_id=v_opening_loan),0);
          update public.member_opening_loans set
-           amount_repaid_to_date=amount_repaid_to_date+v_left,
-           overdue_balance=greatest(0,overdue_balance-v_left),
-           next_collectible_balance=greatest(0,outstanding_balance-v_left-greatest(0,overdue_balance-v_left)),
-           current_status=case when amount_repaid_to_date+v_left>=principal_amount+service_charge_amount then 'closed' else current_status end,
+           amount_repaid_to_date=amount_repaid_to_date+v_amt,
+           overdue_balance=greatest(0,overdue_balance-(select coalesce(sum(arrears_applied),0)
+             from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id and opening_loan_id=v_opening_loan)),
+           next_collectible_balance=greatest(0,outstanding_balance-v_amt-greatest(0,overdue_balance-v_amt)),
+           current_status=case when amount_repaid_to_date+v_amt>=principal_amount+service_charge_amount then 'closed' else current_status end,
            updated_by=auth.uid(),updated_at=now()
          where id=v_opening_loan;
-         update public.member_opening_loan_installment_schedule s set
-           status=case when coalesce((
-             select sum(t.amount) from public.member_opening_loan_transactions t
-             where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no
-           ),0)>=s.total_due then 'paid' else 'partial' end
-         where s.opening_loan_id=v_opening_loan and s.is_current and s.installment_no=(
-           select min(installment_no) from public.member_opening_loan_installment_schedule
-           where opening_loan_id=v_opening_loan and is_current and status<>'paid' and due_date<=p_collection_date);
+         update public.member_opening_loan_installment_schedule s
+            set status=case
+              when coalesce((select sum(t.amount) from public.member_opening_loan_transactions t
+                where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no),0)>=s.total_due then 'paid'
+              when coalesce((select sum(t.amount) from public.member_opening_loan_transactions t
+                where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no),0)>0 then 'partial'
+              when s.due_date<p_collection_date then 'overdue' else 'due' end
+          where s.opening_loan_id=v_opening_loan and s.is_current;
        else
          v_loan:=nullif(r->>'loan_id','')::uuid;
          for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
