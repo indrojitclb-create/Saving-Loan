@@ -154,7 +154,7 @@ begin
          v_opening_arrears_left := (select overdue_balance from public.member_opening_loans where id=v_opening_loan);
          for opening_sc in
            select * from public.member_opening_loan_installment_schedule
-            where opening_loan_id=v_opening_loan and is_current and status<>'paid'
+            where opening_loan_id=v_opening_loan and is_current and status<>'paid' and due_date<=p_collection_date
             order by due_date, installment_no
             for update
          loop
