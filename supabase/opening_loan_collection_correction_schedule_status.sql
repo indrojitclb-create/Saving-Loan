@@ -194,3 +194,7 @@ begin
  return v_sheet.id;
 end $function$
 ;
+
+revoke all on function public.save_daily_collection(uuid,date,jsonb,text,text) from public;
+revoke all on function public.save_daily_collection(uuid,date,jsonb,text,text) from anon;
+grant execute on function public.save_daily_collection(uuid,date,jsonb,text,text) to authenticated;
