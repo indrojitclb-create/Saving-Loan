@@ -45,7 +45,7 @@ export default function TransferModule({canDo}:Props){
   const {data:userData}=await supabase.auth.getUser();
   const historyTable=kind==='employee'?'employee_work_area_transfers':'member_samity_transfers';
   const record=kind==='employee'?{employee_id:id,old_branch_id:oldId,new_branch_id:target,effective_date:date,reason:reason.trim(),changed_by:userData.user?.id||null}:{member_id:id,old_samity_id:oldId,new_samity_id:target,effective_date:date,reason:reason.trim(),changed_by:userData.user?.id||null};
-  const inserted=await supabase.from(historyTable).insert(record);
+  const inserted=await supabase.from(historyTable).insert(record as any);
   if(inserted.error){setNotice('স্থানান্তরের ইতিহাস সংরক্ষণ হয়নি: '+inserted.error.message);setBusy(false);return;}
   const updated=await supabase.from(kind==='employee'?'employees':'members').update(kind==='employee'?{branch_id:target}:{samity_id:target}).eq('id',id);
   if(updated.error){setNotice('ইতিহাস তৈরি হয়েছে, কিন্তু বর্তমান রেকর্ড পরিবর্তন হয়নি। প্রশাসকের সহায়তা নিন: '+updated.error.message);setBusy(false);await load();return;}
