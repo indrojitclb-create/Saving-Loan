@@ -27,6 +27,7 @@ This document describes the intended dependency order for the unified Savings Le
 14. `optional_savings_opening_details.sql` (Opening Data Optional Savings fields)
 15. `atomic_opening_loan_schedule_save` (Supabase migration history; function-based atomic save)
 16. `versioned_opening_loan_schedules.sql` (history-preserving schedule revisions)
+17. `opening_loan_collection_correction_schedule_status.sql` (recalculate current schedule status after a collection correction)
 
 ## Integration notes
 
@@ -49,6 +50,6 @@ This document describes the intended dependency order for the unified Savings Le
 
 ## Opening-loan schedule safety update
 
-The connected Supabase project has received the Opening Data Optional Savings details migration and the atomic opening-loan save function. The follow-up versioning migration adds `schedule_version` and `is_current` to the opening-loan installment schedule. Existing rows are retained as history; schedule edits create a new version rather than deleting prior schedule rows. The daily-collection posting function and collection screen now use only the current schedule version. The SQL source for the versioned schedule migration is `versioned_opening_loan_schedules.sql`.
+The connected Supabase project has received the Opening Data Optional Savings details migration and the atomic opening-loan save function. The follow-up versioning migration adds `schedule_version` and `is_current` to the opening-loan installment schedule. Existing rows are retained as history; schedule edits create a new version rather than deleting prior schedule rows. The daily-collection posting function and collection screen now use only the current schedule version. When a posted collection is corrected, the current schedule statuses are recalculated against the remaining opening-loan transactions; older schedule versions remain intact. The SQL source for the versioned schedule migration is `versioned_opening_loan_schedules.sql`.
 
 The application changes are on the feature branch only. The PR remains Draft; no Production merge or Production deployment has been performed. End-to-end testing with real operational records remains outstanding.
