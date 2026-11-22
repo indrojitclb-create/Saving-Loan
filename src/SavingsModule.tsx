@@ -55,6 +55,9 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [openingClosures,setOpeningClosures]=useState<string[]>([]);
   const [openingHolidays,setOpeningHolidays]=useState<any[]>([]);
   const [openingFridayEnabled,setOpeningFridayEnabled]=useState(true);
+  const [memberEditForm,setMemberEditForm]=useState<Record<string,string>>({});
+  const [memberEditBusy,setMemberEditBusy]=useState(false);
+  const [memberEditNotice,setMemberEditNotice]=useState('');
 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
@@ -151,6 +154,43 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     } : {gs:'0',lts:'0',optional:'0',date:todayText(),optionalDate:todayText(),optionalMonthly:'0',optionalInstallments:'0',reference:'',notes:''});
     setOpeningNotice('');
   }, [opening, memberId]);
+
+  useEffect(() => {
+    if (!selectedMember) { setMemberEditForm({}); setMemberEditNotice(''); return; }
+    const keys = ['father_name','mother_name','spouse_name','admission_date','date_of_birth','marital_status','education_level','nationality','national_id','birth_registration_no','profession','religion','member_type','present_house_street','permanent_house_street'];
+    setMemberEditForm(Object.fromEntries(keys.map(key => [key, String(selectedMember[key] ?? '')])));
+    setMemberEditNotice('');
+  }, [memberId]);
+
+  async function saveOpeningMemberInfo(e: FormEvent) {
+    e.preventDefault();
+    setMemberEditNotice('');
+    if (!supabase || !selectedMember) { setMemberEditNotice('সদস্যের তথ্য পাওয়া যায়নি।'); return; }
+    if (!canDo('opening_data','update')) { setMemberEditNotice('সদস্যের তথ্য পরিবর্তনের অনুমতি নেই।'); return; }
+    setMemberEditBusy(true);
+    const payload = {
+      father_name: memberEditForm.father_name?.trim() || null,
+      mother_name: memberEditForm.mother_name?.trim() || null,
+      spouse_name: memberEditForm.spouse_name?.trim() || null,
+      admission_date: memberEditForm.admission_date || null,
+      date_of_birth: memberEditForm.date_of_birth || null,
+      marital_status: memberEditForm.marital_status || null,
+      education_level: memberEditForm.education_level?.trim() || null,
+      nationality: memberEditForm.nationality?.trim() || null,
+      national_id: memberEditForm.national_id?.trim() || null,
+      birth_registration_no: memberEditForm.birth_registration_no?.trim() || null,
+      profession: memberEditForm.profession?.trim() || null,
+      religion: memberEditForm.religion || null,
+      member_type: memberEditForm.member_type || null,
+      present_house_street: memberEditForm.present_house_street?.trim() || null,
+      permanent_house_street: memberEditForm.permanent_house_street?.trim() || null,
+    };
+    const result = await supabase.from('members').update(payload).eq('id', selectedMember.id).select('*').single();
+    setMemberEditBusy(false);
+    if (result.error) { setMemberEditNotice('সদস্যের তথ্য সংরক্ষণ হয়নি: ' + result.error.message); return; }
+    setMembers(old => old.map(m => m.id === selectedMember.id ? { ...m, ...result.data } : m));
+    setMemberEditNotice('সদস্যের সার্বিক তথ্য সফলভাবে হালনাগাদ হয়েছে।');
+  }
 
   const samity = samities.find(s => s.id === selectedMember?.samity_id);
   const balances = useMemo(() => {
@@ -321,7 +361,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         </div>
       </div>
       {openingOnly && <div className="form-actions" style={{margin:'16px 0'}}><button type="button" className={openingTab==='member'?'':'secondary'} onClick={()=>setOpeningTab('member')}>সদস্যের সার্বিক তথ্য</button><button type="button" className={openingTab==='savings'?'':'secondary'} onClick={()=>setOpeningTab('savings')}>সঞ্চয় ওপেনিং</button><button type="button" className={openingTab==='loan'?'':'secondary'} onClick={()=>setOpeningTab('loan')}>ঋণ ওপেনিং</button></div>}
-      {openingOnly && openingTab==='member' && <section className="panel"><h3>সদস্যের সার্বিক তথ্য</h3><p className="muted">এখানে শুধু আগে থেকে নিবন্ধিত সদস্যের তথ্য দেখা যাবে। নতুন সদস্য ভর্তি এই মডিউলে করা যাবে না।</p><div className="stats-grid"><div className="stat-card"><span>সদস্য কোড</span><strong>{selectedMember.member_code}</strong></div><div className="stat-card"><span>সদস্যের নাম</span><strong>{selectedMember.full_name}</strong></div><div className="stat-card"><span>মোবাইল</span><strong>{selectedMember.phone||'—'}</strong></div></div><div className="form-grid">{[['পিতার নাম','father_name'],['মাতার নাম','mother_name'],['স্বামী/স্ত্রীর নাম','spouse_name'],['ভর্তির তারিখ','admission_date'],['জন্ম তারিখ','date_of_birth'],['বৈবাহিক অবস্থা','marital_status'],['শিক্ষাগত যোগ্যতা','education_level'],['জাতীয়তা','nationality'],['জাতীয় পরিচয়পত্র','national_id'],['জন্ম নিবন্ধন','birth_registration_no'],['পেশা','profession'],['ধর্ম','religion'],['সদস্যের ধরন','member_type'],['বর্তমান ঠিকানা','present_house_street'],['স্থায়ী ঠিকানা','permanent_house_street']].map(([label,key])=><label key={key}>{label}<input readOnly value={selectedMember[key]??'—'}/></label>)}</div></section>}
+      {openingOnly && openingTab==='member' && <section className="panel"><h3>সদস্যের সার্বিক তথ্য</h3><p className="muted">এখানে শুধু আগে থেকে নিবন্ধিত সদস্যের তথ্য দেখা যাবে। নতুন সদস্য ভর্তি এই মডিউলে করা যাবে না। বিদ্যমান তথ্য পরিবর্তনের জন্য Opening Data → Update অনুমতি প্রয়োজন।</p><div className="stats-grid"><div className="stat-card"><span>সদস্য কোড</span><strong>{selectedMember.member_code}</strong></div><div className="stat-card"><span>সদস্যের নাম</span><strong>{selectedMember.full_name}</strong></div><div className="stat-card"><span>মোবাইল</span><strong>{selectedMember.phone||'—'}</strong></div></div>{canDo('opening_data','update')?<form className="employee-form" onSubmit={saveOpeningMemberInfo}><div className="form-grid">{[['পিতার নাম','father_name','text'],['মাতার নাম','mother_name','text'],['স্বামী/স্ত্রীর নাম','spouse_name','text'],['ভর্তির তারিখ','admission_date','date'],['জন্ম তারিখ','date_of_birth','date'],['বৈবাহিক অবস্থা','marital_status','text'],['শিক্ষাগত যোগ্যতা','education_level','text'],['জাতীয়তা','nationality','text'],['জাতীয় পরিচয়পত্র','national_id','text'],['জন্ম নিবন্ধন','birth_registration_no','text'],['পেশা','profession','text'],['ধর্ম','religion','text'],['সদস্যের ধরন','member_type','text'],['বর্তমান ঠিকানা','present_house_street','text'],['স্থায়ী ঠিকানা','permanent_house_street','text']].map(([label,key,type])=><label key={key}>{label}<input type={type} value={memberEditForm[key]??''} onChange={e=>setMemberEditForm(old=>({...old,[key]:e.target.value}))}/></label>)}</div>{memberEditNotice&&<div className="notice">{memberEditNotice}</div>}<div className="form-actions"><button disabled={memberEditBusy}>{memberEditBusy?'সংরক্ষণ হচ্ছে...':'সদস্যের তথ্য হালনাগাদ'}</button></div></form>:<><div className="form-grid">{[['পিতার নাম','father_name'],['মাতার নাম','mother_name'],['স্বামী/স্ত্রীর নাম','spouse_name'],['ভর্তির তারিখ','admission_date'],['জন্ম তারিখ','date_of_birth'],['বৈবাহিক অবস্থা','marital_status'],['শিক্ষাগত যোগ্যতা','education_level'],['জাতীয়তা','nationality'],['জাতীয় পরিচয়পত্র','national_id'],['জন্ম নিবন্ধন','birth_registration_no'],['পেশা','profession'],['ধর্ম','religion'],['সদস্যের ধরন','member_type'],['বর্তমান ঠিকানা','present_house_street'],['স্থায়ী ঠিকানা','permanent_house_street']].map(([label,key])=><label key={key}>{label}<input readOnly value={selectedMember[key]??'—'}/></label>)}</div><p className="muted">দেখার অনুমতি আছে, কিন্তু পরিবর্তনের অনুমতি নেই।</p></>}</section>}
       {openingOnly && openingTab==='savings' && (canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
         <h3>Opening Data Input — প্রারম্ভিক সঞ্চয় স্থিতি</h3>
         <p className="muted">প্রারম্ভিক GS, LTS-New ও Optional ব্যালেন্স আলাদা সংরক্ষণ হবে।</p>
