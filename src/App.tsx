@@ -7,6 +7,7 @@ import SavingsModule from './SavingsModule';
 import HolidayModule from './HolidayModule';
 import ReportsModule from './ReportsModule';
 import AuditModule from './AuditModule';
+import TransferModule from './TransferModule';
 import { configured, configurationError, supabase } from './lib/supabase';
 
 type ModuleKey = 'opening_data' | 'dashboard' | 'employees' | 'users' | 'savings' | 'collection' | 'loans' | 'reports' | 'audit' | 'area_master' | 'samity' | 'samity_day_change' | 'samity_staff' | 'samity_branch_transfer' | 'employee_transfer' | 'member_transfer' | 'members' | 'optional_savings' | 'holiday_calendar';
@@ -725,6 +726,7 @@ export default function App() {
       {active === 'holiday_calendar' && <HolidayModule branches={branches} samities={samities} canDo={canDo} />}
       {active === 'reports' && <ReportsModule canDo={canDo} />}
       {active === 'audit' && <AuditModule canDo={canDo} />}
+      {(active === 'employee_transfer' || active === 'member_transfer') && <TransferModule canDo={canDo} />}
       {active !== 'dashboard' && active !== 'savings' && active !== 'loans' && active !== 'collection' && active !== 'employees' && active !== 'users' && active !== 'area_master' && active !== 'samity' && active !== 'samity_day_change' && active !== 'samity_staff' && active !== 'samity_branch_transfer' && active !== 'members' && active !== 'optional_savings' && active !== 'holiday_calendar' && active !== 'reports' && active !== 'opening_data' && <section className="panel"><div><p className="eyebrow">COMING NEXT</p><h2>{selected.label}</h2><p>{selected.desc}</p></div><p className="muted">এই মডিউলটি পরবর্তী ধাপে তৈরি করা হবে।</p></section>}
       <footer className="footer">S&L Management System · Main Admin Console</footer>
     </main>
