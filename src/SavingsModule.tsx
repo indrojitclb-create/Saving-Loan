@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { supabase } from './lib/supabase';
 import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
-type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string };
+type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string; optional_opening_date?: string | null; optional_monthly_installment_amount?: number | null; optional_installments_paid?: number | null };
 type OpeningLoan = { id:string; member_id:string; loan_no:string; disbursement_date:string; project_name:string; loan_cycle:number; principal_amount:number; service_charge_amount:number; amount_repaid_to_date:number; current_status:'active'|'closed'|'written_off'; outstanding_balance:number; overdue_balance:number; last_installment_no:number; last_installment_date:string|null; next_installment_date:string|null; next_collectible_balance:number; reference_no:string|null; notes:string|null };
 
 type Props = {
@@ -43,7 +43,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [userId, setUserId] = useState('');
-  const [openingForm, setOpeningForm] = useState({gs:'0',lts:'0',optional:'0',date:todayText(),reference:'',notes:''});
+  const [openingForm, setOpeningForm] = useState({gs:'0',lts:'0',optional:'0',date:todayText(),optionalDate:todayText(),optionalMonthly:'0',optionalInstallments:'0',reference:'',notes:''});
   const [openingBusy, setOpeningBusy] = useState(false);
   const [openingNotice, setOpeningNotice] = useState('');
   const [openingLoans,setOpeningLoans]=useState<OpeningLoan[]>([]);
@@ -97,7 +97,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         supabase.from('member_savings_enrollments')
           .select('id,savings_type,amount,term_months,product_name_snapshot')
           .eq('member_id', memberId),
-        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date').eq('member_id',memberId).maybeSingle(),
+        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date,optional_monthly_installment_amount,optional_installments_paid').eq('member_id',memberId).maybeSingle(),
       ]);
       if (!live) return;
       if (txResult.error) setNotice('সঞ্চয় লেনদেন পড়া যায়নি: ' + txResult.error.message);
@@ -142,9 +142,12 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       lts: String(opening.lts_new_balance ?? 0),
       optional: String(opening.optional_balance ?? 0),
       date: opening.opening_date || todayText(),
+      optionalDate: opening.optional_opening_date || opening.opening_date || todayText(),
+      optionalMonthly: String(opening.optional_monthly_installment_amount ?? 0),
+      optionalInstallments: String(opening.optional_installments_paid ?? 0),
       reference: '',
       notes: '',
-    } : {gs:'0',lts:'0',optional:'0',date:todayText(),reference:'',notes:''});
+    } : {gs:'0',lts:'0',optional:'0',date:todayText(),optionalDate:todayText(),optionalMonthly:'0',optionalInstallments:'0',reference:'',notes:''});
     setOpeningNotice('');
   }, [opening, memberId]);
 
@@ -214,13 +217,16 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if (opening !== null ? !canDo('opening_data','update') : !canDo('opening_data','create')) { setOpeningNotice(opening !== null ? 'বিদ্যমান Opening Balance পরিবর্তনের অনুমতি নেই।' : 'নতুন Opening Balance এন্ট্রির অনুমতি নেই।'); return; }
     const gs=Number(openingForm.gs), lts=Number(openingForm.lts), optional=Number(openingForm.optional);
     if ([gs,lts,optional].some(v=>!Number.isFinite(v)||v<0)) { setOpeningNotice('শূন্য বা তার বেশি সঠিক পরিমাণ লিখুন।'); return; }
+    if (gs + lts + optional <= 0) { setOpeningNotice('এই সদস্যের অন্তত একটি সঞ্চয় খাতে শূন্যের বেশি Opening Balance থাকতে হবে।'); return; }
+    const optionalMonthly=Number(openingForm.optionalMonthly), optionalInstallments=Number(openingForm.optionalInstallments);
     if (optional>0 && !optionalEnrolled) { setOpeningNotice('Optional balance দিতে হলে সদস্য Optional Savings-এ অন্তর্ভুক্ত থাকতে হবে।'); return; }
+    if (optional>0 && (!openingForm.optionalDate || !Number.isFinite(optionalMonthly) || optionalMonthly<=0 || !Number.isInteger(optionalInstallments) || optionalInstallments<0)) { setOpeningNotice('Optional Savings-এর ওপেনিং তারিখ, মাসিক জমা এবং জমাকৃত কিস্তির সংখ্যা সঠিকভাবে দিন।'); return; }
     setOpeningBusy(true);
-    const result=await supabase.from('member_savings_opening_balances').upsert({member_id:memberId,opening_date:openingForm.date,gs_balance:gs,lts_new_balance:lts,optional_balance:optional,reference_no:openingForm.reference.trim()||null,notes:openingForm.notes.trim()||null,created_by:userId,updated_by:userId},{onConflict:'member_id'});
+    const result=await supabase.from('member_savings_opening_balances').upsert({member_id:memberId,opening_date:openingForm.date,gs_balance:gs,lts_new_balance:lts,optional_balance:optional,optional_opening_date:optional>0?openingForm.optionalDate:null,optional_monthly_installment_amount:optional>0?optionalMonthly:0,optional_installments_paid:optional>0?optionalInstallments:0,reference_no:openingForm.reference.trim()||null,notes:openingForm.notes.trim()||null,created_by:userId,updated_by:userId},{onConflict:'member_id'});
     setOpeningBusy(false);
     if(result.error){setOpeningNotice('Opening balance সংরক্ষণ হয়নি: '+result.error.message);return;}
     setOpeningNotice('Opening Balance সংরক্ষিত হয়েছে।');
-    const refreshed=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date').eq('member_id',memberId).maybeSingle();
+    const refreshed=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date,optional_monthly_installment_amount,optional_installments_paid').eq('member_id',memberId).maybeSingle();
     if(!refreshed.error)setOpening(refreshed.data||null);
   }
 
@@ -320,7 +326,10 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
           <label>Opening Date *<input type="date" required value={openingForm.date} onChange={e=>setOpeningForm({...openingForm,date:e.target.value})}/></label>
           <label>GS Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.gs} onChange={e=>setOpeningForm({...openingForm,gs:e.target.value})}/></label>
           <label>LTS-New Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.lts} onChange={e=>setOpeningForm({...openingForm,lts:e.target.value})}/></label>
-          <label>Optional Opening Balance *<input type="number" min="0" step="0.01" required value={openingForm.optional} onChange={e=>setOpeningForm({...openingForm,optional:e.target.value})}/></label>
+          <label>Optional Savings মোট জমা *<input type="number" min="0" step="0.01" required value={openingForm.optional} onChange={e=>setOpeningForm({...openingForm,optional:e.target.value})}/></label>
+          <label>Optional Savings ওপেনিং তারিখ {Number(openingForm.optional)>0?'*':''}<input type="date" required={Number(openingForm.optional)>0} value={openingForm.optionalDate} onChange={e=>setOpeningForm({...openingForm,optionalDate:e.target.value})}/></label>
+          <label>মাসিক জমার পরিমাণ {Number(openingForm.optional)>0?'*':''}<input type="number" min="0" step="0.01" required={Number(openingForm.optional)>0} value={openingForm.optionalMonthly} onChange={e=>setOpeningForm({...openingForm,optionalMonthly:e.target.value})}/></label>
+          <label>এ পর্যন্ত জমাকৃত কিস্তি সংখ্যা {Number(openingForm.optional)>0?'*':''}<input type="number" min="0" step="1" required={Number(openingForm.optional)>0} value={openingForm.optionalInstallments} onChange={e=>setOpeningForm({...openingForm,optionalInstallments:e.target.value})}/></label>
           <label>Reference<input value={openingForm.reference} onChange={e=>setOpeningForm({...openingForm,reference:e.target.value})}/></label>
           <label>Remarks<input value={openingForm.notes} onChange={e=>setOpeningForm({...openingForm,notes:e.target.value})}/></label>
         </div>
