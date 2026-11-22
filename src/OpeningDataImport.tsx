@@ -134,9 +134,9 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         const member=existing.get(code.toLowerCase());
         let error='';
         if(!code)error='সদস্য কোড নেই';
-        else if(seen.has(code.toLowerCase()))error='ফাইলে একই সদস্য কোড একাধিকবার আছে';
+        else if(tab!=='loan'&&seen.has(code.toLowerCase()))error='ফাইলে একই সদস্য কোড একাধিকবার আছে';
         else if(!member)error='এই সদস্য কোডের কোনো নিবন্ধিত সদস্য নেই';
-        seen.add(code.toLowerCase());
+        const duplicateKey=tab==='loan'?code.toLowerCase()+'|'+String(data.loan_no||'').trim().toLowerCase():code.toLowerCase();\n        if(tab==='loan'&&seen.has(duplicateKey))error='একই সদস্যের একই ঋণ নম্বর একাধিকবার আছে';\n        seen.add(duplicateKey);
         if(tab==='member'){
           if(member && data.phone && !/^01[3-9]\\d{8}$/.test(String(data.phone).trim()))error='মোবাইল নম্বর ১১ ডিজিট হতে হবে';
           if(member && data.smart_id && !/^\\d{10}$/.test(String(data.smart_id).trim()))error='Smart ID ১০ ডিজিট হতে হবে';
@@ -149,7 +149,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         }else{
           const principal=num(data.principal_amount),charge=num(data.service_charge_amount),repaid=num(data.amount_repaid_to_date),arrears=num(data.overdue_balance),cycle=num(data.loan_cycle||1),last=num(data.last_installment_no||0);
           if(!String(data.loan_no||'').trim()||!dateValue(data.disbursement_date)||!String(data.project_name||'').trim())error='ঋণ নম্বর, বিতরণের তারিখ ও প্রকল্প আবশ্যক';
-          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||cycle<1||last<0||last>46)error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
+          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||cycle<1||!Number.isInteger(cycle)||last<0||last>46||!Number.isInteger(last))error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
           else if(last>0&&!dateValue(data.last_installment_date))error='সর্বশেষ কিস্তির তারিখ আবশ্যক';
           else if(data.current_status==='closed'&&principal+charge-repaid>0)error='অবশিষ্ট স্থিতি থাকলে ঋণ বন্ধ করা যাবে না';
         }
@@ -172,7 +172,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         if(balanceResult.error)throw balanceResult.error;
         const balances=new Map((balanceResult.data||[]).map((b:any)=>[b.member_id,Number(b.gs_balance||0)+Number(b.lts_new_balance||0)+Number(b.optional_balance||0)]));
         for(const r of rows){
-          if(!(balances.get(r.member_id!)||0>0)){errors.push('লাইন '+r.line+': সদস্যের সঞ্চয় স্থিতি নেই');continue;}
+          if(!((balances.get(r.member_id!)||0)>0)){errors.push('লাইন '+r.line+': সদস্যের সঞ্চয় স্থিতি নেই');continue;}
           const payload:Record<string,any>={};
           for(const k of fieldList.member){if(k==='member_code'||r.data[k]===undefined||r.data[k]==='')continue;payload[k]=['family_member_count','yearly_income','land_area'].includes(k)?num(r.data[k]):r.data[k];}
           const res=await supabase.from('members').update(payload).eq('id',r.member_id);
@@ -218,7 +218,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
               nextDate=dates[0]||null;
             }catch(err){errors.push('লাইন '+r.line+': '+(err instanceof Error?err.message:'কিস্তি সিডিউল তৈরি হয়নি'));continue;}
           }
-          const inserted=await supabase.from('member_opening_loans').insert({
+          const duplicate=await supabase.from('member_opening_loans').select('id').eq('member_id',r.member_id).eq('loan_no',String(d.loan_no).trim()).maybeSingle();\n          if(duplicate.error){errors.push('লাইন '+r.line+': '+duplicate.error.message);continue;}\n          if(duplicate.data){errors.push('লাইন '+r.line+': এই সদস্যের এই ঋণ নম্বর আগে থেকেই আছে; নতুন রেকর্ড যোগ করা হয়নি');continue;}\n          const inserted=await supabase.from('member_opening_loans').insert({
             member_id:r.member_id,loan_no:String(d.loan_no).trim(),disbursement_date:dateValue(d.disbursement_date),project_name:String(d.project_name).trim(),loan_cycle:cycle,
             principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:status,overdue_balance:arrears,last_installment_no:last,
             last_installment_date:last?dateValue(d.last_installment_date):null,next_installment_date:nextDate,next_collectible_balance:collectible,
