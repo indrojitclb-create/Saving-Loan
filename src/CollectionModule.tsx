@@ -183,7 +183,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       const loanIds=(lr.data||[]).map(x=>x.id);
       const openingLoanIds=(or.data||[]).map(x=>x.id);
       const [tr, scheduleResult, otr, osr]=loanIds.length||openingLoanIds.length?await Promise.all([
-        supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount').in('loan_id',loanIds).lte('transaction_date',end).order('transaction_date'),
+        loanIds.length?supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount').in('loan_id',loanIds).lte('transaction_date',end).order('transaction_date'):Promise.resolve({data:[],error:null}),
         supabase.from('loan_installment_schedule').select('id,loan_id,week_no,due_date,total_due,principal_paid,service_charge_paid,status').in('loan_id',loanIds.length?loanIds:['00000000-0000-0000-0000-000000000000']).gte('due_date',start).lte('due_date',end).order('due_date'),
         openingLoanIds.length?supabase.from('member_opening_loan_transactions').select('id,opening_loan_id,transaction_date,amount').in('opening_loan_id',openingLoanIds).order('transaction_date'):Promise.resolve({data:[],error:null}),
         openingLoanIds.length?supabase.from('member_opening_loan_installment_schedule').select('id,opening_loan_id,installment_no,due_date,total_due,status').in('opening_loan_id',openingLoanIds).eq('is_current',true).gte('due_date',start).lte('due_date',end).order('due_date'):Promise.resolve({data:[],error:null})
