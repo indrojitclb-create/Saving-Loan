@@ -155,8 +155,20 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         }
         return {line:i+2,member_code:code,member_id:member?.id,name:member?.full_name,data,error};
       }).filter(r=>r.member_code||Object.keys(r.data).length);
-      setRows(parsed);
       if(!parsed.length)throw new Error('ফাইলে কোনো ডেটা সারি পাওয়া যায়নি।');
+      if(tab==='savings'||tab==='loan'){
+        const ids=[...new Set(parsed.filter(r=>r.member_id).map(r=>r.member_id!))];
+        const balanceCheck=await supabase!.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance').in('member_id',ids);
+        if(balanceCheck.error)throw balanceCheck.error;
+        const hasSavings=new Set((balanceCheck.data||[]).filter((b:any)=>Number(b.gs_balance||0)+Number(b.lts_new_balance||0)+Number(b.optional_balance||0)>0).map((b:any)=>b.member_id));
+        if(tab==='loan'){
+          parsed.forEach(r=>{if(!r.error&&!hasSavings.has(r.member_id!))r.error='এই সদস্যের সঞ্চয় স্থিতি নেই; আগে সঞ্চয় ওপেনিং দিন';});
+        }else{
+          const existing=new Set((balanceCheck.data||[]).map((b:any)=>b.member_id));
+          parsed.forEach(r=>{if(!r.error&&existing.has(r.member_id!)&&!canDo('opening_data','update'))r.error='এই সদস্যের সঞ্চয় ওপেনিং আগে থেকেই আছে; Update অনুমতি প্রয়োজন';});
+        }
+      }
+      setRows(parsed);
       setNotice('ফাইল পড়া হয়েছে। সংরক্ষণের আগে নিচের Preview যাচাই করুন।');
     }catch(err){setNotice(err instanceof Error?err.message:'ফাইল পড়া যায়নি।');}
   }
