@@ -1,7 +1,7 @@
 -- Daily collection posting, controlled corrections, Day End and Month End.
 -- Apply only after: schema.sql, security.sql, assistant_admin.sql, member_registration.sql,
 -- samity_management.sql, holiday_calendar.sql, loan_collection.sql,
--- collection_sheet.sql and optional_savings_versions.sql.
+-- collection_sheet.sql, optional_savings_versions.sql and opening_loan_balances.sql.
 
 create table if not exists public.daily_collection_sheets (
   id uuid primary key default gen_random_uuid(),
@@ -24,11 +24,52 @@ create index if not exists daily_collection_branch_date_idx
 create index if not exists daily_collection_samity_date_idx
   on public.daily_collection_sheets(samity_id, collection_date desc);
 
+-- Ensure the shared savings ledger columns exist before daily posting policies/RPCs.
+-- optional_savings_versions.sql must run first because enrollment_id references its table.
+alter table public.savings_transactions
+  add column if not exists savings_category text,
+  add column if not exists savings_type text not null default 'mandatory'
+    check (savings_type in ('mandatory','optional')),
+  add column if not exists enrollment_id uuid references public.member_savings_enrollments(id) on delete restrict;
+
+-- Preserve the older mandatory/optional ledger classification when upgrading.
+update public.savings_transactions
+set savings_category = case when savings_type = 'optional' then 'Optional' else 'GS' end
+where savings_category is null;
+alter table public.savings_transactions
+  alter column savings_category set default 'GS',
+  alter column savings_category set not null;
+
 -- Each generated ledger row is traceable to the daily sheet that created it.
 alter table public.savings_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+create table if not exists public.member_opening_loan_transactions (
+ id uuid primary key default gen_random_uuid(),
+ opening_loan_id uuid not null references public.member_opening_loans(id) on delete restrict,
+ transaction_date date not null,
+ amount numeric(14,2) not null check(amount>0),
+ arrears_applied numeric(14,2) not null default 0 check(arrears_applied>=0),
+ installment_no integer,
+ created_by uuid not null references public.profiles(id),
+ collection_sheet_id uuid references public.daily_collection_sheets(id) on delete cascade,
+ created_at timestamptz not null default now()
+);
+create index if not exists opening_loan_tx_date_idx on public.member_opening_loan_transactions(opening_loan_id,transaction_date);
+alter table public.member_opening_loan_transactions enable row level security;
+drop policy if exists opening_loan_tx_read on public.member_opening_loan_transactions;
+create policy opening_loan_tx_read on public.member_opening_loan_transactions for select to authenticated using (
+ exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
+);
+drop policy if exists opening_loan_tx_insert on public.member_opening_loan_transactions;
+create policy opening_loan_tx_insert on public.member_opening_loan_transactions for insert to authenticated with check (
+ created_by=(select auth.uid()) and public.can_manage_module('collection','create') and exists(select 1 from public.member_opening_loans l where l.id=opening_loan_id and public.can_access_member(l.member_id))
+);
 alter table public.loan_transactions
   add column if not exists collection_sheet_id uuid references public.daily_collection_sheets(id) on delete restrict;
+-- The base schema starts with a generic savings ledger. Add the category
+-- discriminator before applying the category constraint and daily-posting RPCs.
+alter table public.savings_transactions
+  add column if not exists savings_category text not null default 'GS';
 alter table public.savings_transactions drop constraint if exists savings_transactions_savings_category_check;
 alter table public.savings_transactions add constraint savings_transactions_savings_category_check
   check (savings_category in ('GS','LTS-New','Optional'));
@@ -151,7 +192,7 @@ create or replace function public.save_daily_collection(
 declare
  v_sheet public.daily_collection_sheets%rowtype; v_branch uuid; v_role text; v_allowed boolean;
  r jsonb; v_member uuid; v_amt numeric(14,2); v_left numeric(14,2);
- sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid;
+ sc record; v_service numeric(14,2); v_principal numeric(14,2); v_loan uuid; v_enroll uuid; v_opening_loan uuid;
 begin
  if auth.uid() is null or jsonb_typeof(p_rows)<>'array' or p_action not in ('draft','post') then
    raise exception 'সঠিক আদায় তথ্য দিন';
@@ -189,9 +230,15 @@ begin
        and member_id=v_member and savings_type='optional') then raise exception 'ঐচ্ছিক সঞ্চয় স্কিম নির্বাচন করুন'; end if;
    end if;
    if coalesce((r->>'loan_paid')::numeric,0)>0 then
-     v_loan:=nullif(r->>'loan_id','')::uuid;
-     if not exists(select 1 from public.loan_accounts where id=v_loan and member_id=v_member and status='active') then
-       raise exception 'সক্রিয় ঋণ নির্বাচন করুন'; end if;
+     v_opening_loan:=nullif(r->>'opening_loan_id','')::uuid;
+     if v_opening_loan is not null then
+       if not exists(select 1 from public.member_opening_loans where id=v_opening_loan and member_id=v_member and current_status='active') then
+         raise exception 'সক্রিয় প্রারম্ভিক ঋণ নির্বাচন করুন'; end if;
+     else
+       v_loan:=nullif(r->>'loan_id','')::uuid;
+       if not exists(select 1 from public.loan_accounts where id=v_loan and member_id=v_member and status='active') then
+         raise exception 'সক্রিয় ঋণ নির্বাচন করুন'; end if;
+     end if;
    end if;
  end loop;
 
@@ -211,6 +258,14 @@ begin
    if v_sheet.status='posted' then
      insert into public.daily_collection_corrections(sheet_id,old_rows,new_rows,reason,corrected_by)
        values(v_sheet.id,v_sheet.rows,p_rows,trim(p_reason),auth.uid());
+     update public.member_opening_loans l set
+       amount_repaid_to_date=greatest(0,l.amount_repaid_to_date-x.paid),
+       overdue_balance=l.overdue_balance+x.arrears,
+       updated_by=auth.uid(),updated_at=now()
+     from (select opening_loan_id,sum(amount) paid,sum(arrears_applied) arrears
+       from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id group by opening_loan_id) x
+     where l.id=x.opening_loan_id;
+     delete from public.member_opening_loan_transactions where collection_sheet_id=v_sheet.id;
      delete from public.savings_transactions where collection_sheet_id=v_sheet.id;
      delete from public.loan_transactions where collection_sheet_id=v_sheet.id;
      update public.loan_installment_schedule s set
@@ -241,9 +296,8 @@ begin
        values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'GS',v_sheet.id); end if;
      v_amt:=coalesce((r->>'gs_withdrawal')::numeric,0);
      if v_amt>0 then
-       if v_amt>coalesce((select sum(case when transaction_type='deposit' then amount else -amount end)
-         from public.savings_transactions where member_id=v_member and savings_category='GS'
-         and transaction_date<=p_collection_date),0) then raise exception 'GS স্থিতির চেয়ে বেশি উত্তোলন করা যাবে না'; end if;
+       -- The shared savings-ledger trigger checks opening balance plus dated ledger
+       -- transactions under a per-member/category lock, including concurrent postings.
        insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
          values(v_member,p_collection_date,'withdrawal',v_amt,auth.uid(),'GS',v_sheet.id);
      end if;
@@ -251,28 +305,54 @@ begin
      if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,collection_sheet_id)
        values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'LTS-New',v_sheet.id); end if;
      v_amt:=coalesce((r->>'optional_savings')::numeric,0);
-     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,enrollment_id,collection_sheet_id)
-       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
+     if v_amt>0 then insert into public.savings_transactions(member_id,transaction_date,transaction_type,amount,created_by,savings_category,savings_type,enrollment_id,collection_sheet_id)
+       values(v_member,p_collection_date,'deposit',v_amt,auth.uid(),'Optional','optional',nullif(r->>'optional_enrollment_id','')::uuid,v_sheet.id); end if;
      v_left:=coalesce((r->>'loan_paid')::numeric,0);
      if v_left>0 then
-       v_loan:=nullif(r->>'loan_id','')::uuid;
-       for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
-         order by due_date,week_no for update loop
-         exit when v_left<=0;
-         v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
-         if v_amt=0 then continue; end if;
-         v_amt:=least(v_amt,v_left);
-         v_service:=least(v_amt,greatest(0,sc.service_charge_due-sc.service_charge_paid));
-         v_principal:=v_amt-v_service;
-         insert into public.loan_transactions(loan_id,transaction_date,amount,principal_paid,interest_paid,schedule_id,created_by,collection_sheet_id)
-           values(v_loan,p_collection_date,v_amt,v_principal,v_service,sc.id,auth.uid(),v_sheet.id);
-         update public.loan_installment_schedule set principal_paid=principal_paid+v_principal,
-           service_charge_paid=service_charge_paid+v_service,
-           status=case when principal_paid+v_principal+service_charge_paid+v_service>=total_due then 'paid' else 'partial' end
-           where id=sc.id;
-         v_left:=v_left-v_amt;
-       end loop;
-       if v_left>0 then raise exception 'ঋণের অবশিষ্ট কিস্তির চেয়ে বেশি আদায়'; end if;
+       if nullif(r->>'opening_loan_id','') is not null then
+         v_opening_loan:=(r->>'opening_loan_id')::uuid;
+         select greatest(0,outstanding_balance) into v_amt from public.member_opening_loans
+           where id=v_opening_loan and member_id=v_member and current_status='active' for update;
+         if v_amt is null or v_left>v_amt then raise exception 'প্রারম্ভিক ঋণের অবশিষ্ট স্থিতির চেয়ে বেশি আদায়'; end if;
+         insert into public.member_opening_loan_transactions(opening_loan_id,transaction_date,amount,arrears_applied,installment_no,created_by,collection_sheet_id)
+           select v_opening_loan,p_collection_date,v_left,least(overdue_balance,v_left),
+             (select min(installment_no) from public.member_opening_loan_installment_schedule where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date),
+             auth.uid(),v_sheet.id from public.member_opening_loans where id=v_opening_loan;
+         update public.member_opening_loans set
+           amount_repaid_to_date=amount_repaid_to_date+v_left,
+           overdue_balance=greatest(0,overdue_balance-v_left),
+           next_collectible_balance=greatest(0,outstanding_balance-v_left-greatest(0,overdue_balance-v_left)),
+           current_status=case when amount_repaid_to_date+v_left>=principal_amount+service_charge_amount then 'closed' else current_status end,
+           updated_by=auth.uid(),updated_at=now()
+         where id=v_opening_loan;
+         update public.member_opening_loan_installment_schedule s set
+           status=case when coalesce((
+             select sum(t.amount) from public.member_opening_loan_transactions t
+             where t.opening_loan_id=s.opening_loan_id and t.installment_no=s.installment_no
+           ),0)>=s.total_due then 'paid' else 'partial' end
+         where s.opening_loan_id=v_opening_loan and s.installment_no=(
+           select min(installment_no) from public.member_opening_loan_installment_schedule
+           where opening_loan_id=v_opening_loan and status<>'paid' and due_date<=p_collection_date);
+       else
+         v_loan:=nullif(r->>'loan_id','')::uuid;
+         for sc in select * from public.loan_installment_schedule where loan_id=v_loan and status<>'paid' and due_date<=p_collection_date
+           order by due_date,week_no for update loop
+           exit when v_left<=0;
+           v_amt:=greatest(0,sc.total_due-sc.principal_paid-sc.service_charge_paid);
+           if v_amt=0 then continue; end if;
+           v_amt:=least(v_amt,v_left);
+           v_service:=least(v_amt,greatest(0,sc.service_charge_due-sc.service_charge_paid));
+           v_principal:=v_amt-v_service;
+           insert into public.loan_transactions(loan_id,transaction_date,amount,principal_paid,interest_paid,schedule_id,created_by,collection_sheet_id)
+             values(v_loan,p_collection_date,v_amt,v_principal,v_service,sc.id,auth.uid(),v_sheet.id);
+           update public.loan_installment_schedule set principal_paid=principal_paid+v_principal,
+             service_charge_paid=service_charge_paid+v_service,
+             status=case when principal_paid+v_principal+service_charge_paid+v_service>=total_due then 'paid' else 'partial' end
+             where id=sc.id;
+           v_left:=v_left-v_amt;
+         end loop;
+         if v_left>0 then raise exception 'ঋণের অবশিষ্ট কিস্তির চেয়ে বেশি আদায়'; end if;
+       end if;
      end if;
    end loop;
  end if;
@@ -401,24 +481,41 @@ begin
       join public.loan_accounts a on a.id=sc.loan_id join public.members m on m.id=a.member_id
       where m.branch_id=p_branch_id and sc.due_date>=p_month_start
         and sc.due_date<(p_month_start+interval '1 month')),0),
-    'gs_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='GS'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'lts_new_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='LTS-New'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'optional_savings_closing_balance',coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
-      from public.savings_transactions t join public.members m on m.id=t.member_id
-      where m.branch_id=p_branch_id and t.savings_category='Optional'
-        and t.transaction_date<(p_month_start+interval '1 month')),0),
-    'loan_outstanding',coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
-      coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
-        and t.transaction_date<(p_month_start+interval '1 month')),0)))
-      from public.loan_accounts a join public.members m on m.id=a.member_id
-      where m.branch_id=p_branch_id and a.disbursement_date<(p_month_start+interval '1 month')
-        and a.status='active'),0)
+    'gs_closing_balance',
+      coalesce((select sum(o.gs_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='GS'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'lts_new_closing_balance',
+      coalesce((select sum(o.lts_new_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='LTS-New'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'optional_savings_closing_balance',
+      coalesce((select sum(o.optional_balance) from public.member_savings_opening_balances o
+        join public.members m on m.id=o.member_id
+        where m.branch_id=p_branch_id and o.opening_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(case when t.transaction_type='deposit' then t.amount else -t.amount end)
+        from public.savings_transactions t join public.members m on m.id=t.member_id
+        where m.branch_id=p_branch_id and t.savings_category='Optional'
+          and t.transaction_date<(p_month_start+interval '1 month')),0),
+    'loan_outstanding',
+      coalesce((select sum(l.outstanding_balance) from public.member_opening_loans l
+        join public.members m on m.id=l.member_id
+        where m.branch_id=p_branch_id and l.current_status='active'
+          and l.disbursement_date<(p_month_start+interval '1 month')),0)
+      + coalesce((select sum(greatest(0,coalesce(a.total_repayable,a.principal+a.total_service_charge,0)-
+        coalesce((select sum(t.amount) from public.loan_transactions t where t.loan_id=a.id
+          and t.transaction_date<(p_month_start+interval '1 month')),0)))
+        from public.loan_accounts a join public.members m on m.id=a.member_id
+        where m.branch_id=p_branch_id and a.disbursement_date<(p_month_start+interval '1 month')
+          and a.status='active'),0)
   ) into v_totals;
   insert into public.collection_month_closures(branch_id,month_start,totals,closed_by)
   values(p_branch_id,p_month_start,v_totals,auth.uid())

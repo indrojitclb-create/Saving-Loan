@@ -164,6 +164,21 @@ begin
     where a.id = new.loan_id;
   elsif tg_table_name = 'savings_transactions' then
     select samity_id into v_samity_id from public.members where id = new.member_id;
+  elsif tg_table_name = 'member_opening_loans' then
+    select samity_id into v_samity_id from public.members where id = new.member_id;
+    v_date := new.disbursement_date;
+  elsif tg_table_name = 'member_opening_loan_installment_schedule' then
+    select m.samity_id into v_samity_id
+    from public.member_opening_loans l join public.members m on m.id = l.member_id
+    where l.id = new.opening_loan_id;
+    v_date := new.due_date;
+  elsif tg_table_name = 'member_opening_loan_transactions' then
+    select m.samity_id into v_samity_id
+    from public.member_opening_loans l join public.members m on m.id = l.member_id
+    where l.id = new.opening_loan_id;
+  elsif tg_table_name = 'daily_collection_sheets' then
+    v_samity_id := new.samity_id;
+    v_date := new.collection_date;
   end if;
 
   if v_samity_id is not null and v_date is not null
@@ -193,6 +208,26 @@ drop trigger if exists loan_schedule_holiday_guard on public.loan_installment_sc
 create trigger loan_schedule_holiday_guard
 before insert or update of due_date, loan_id on public.loan_installment_schedule
 for each row execute function public.prevent_holiday_transaction();
+drop trigger if exists opening_loans_holiday_guard on public.member_opening_loans;
+create trigger opening_loans_holiday_guard
+before insert or update of disbursement_date, member_id on public.member_opening_loans
+for each row execute function public.prevent_holiday_transaction();
+
+drop trigger if exists opening_loan_schedule_holiday_guard on public.member_opening_loan_installment_schedule;
+create trigger opening_loan_schedule_holiday_guard
+before insert or update of due_date, opening_loan_id on public.member_opening_loan_installment_schedule
+for each row execute function public.prevent_holiday_transaction();
+
+drop trigger if exists opening_loan_transactions_holiday_guard on public.member_opening_loan_transactions;
+create trigger opening_loan_transactions_holiday_guard
+before insert or update of transaction_date, opening_loan_id on public.member_opening_loan_transactions
+for each row execute function public.prevent_holiday_transaction();
+
+drop trigger if exists daily_collection_sheets_holiday_guard on public.daily_collection_sheets;
+create trigger daily_collection_sheets_holiday_guard
+before insert or update of collection_date, samity_id on public.daily_collection_sheets
+for each row execute function public.prevent_holiday_transaction();
+
 
 grant select, insert, update, delete on public.holiday_calendar to authenticated;
 grant select, insert, update on public.holiday_calendar_settings to authenticated;
