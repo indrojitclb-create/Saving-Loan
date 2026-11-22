@@ -237,17 +237,16 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           const duplicate=await supabase.from('member_opening_loans').select('id').eq('member_id',r.member_id).eq('loan_no',String(d.loan_no).trim()).maybeSingle();
           if(duplicate.error){errors.push('লাইন '+r.line+': '+duplicate.error.message);continue;}
           if(duplicate.data){errors.push('লাইন '+r.line+': এই সদস্যের এই ঋণ নম্বর আগে থেকেই আছে; নতুন রেকর্ড যোগ করা হয়নি');continue;}
-          const inserted=await supabase.from('member_opening_loans').insert({
-            member_id:r.member_id,loan_no:String(d.loan_no).trim(),disbursement_date:dateValue(d.disbursement_date),project_name:String(d.project_name).trim(),loan_cycle:cycle,
-            principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:status,overdue_balance:arrears,last_installment_no:last,
-            last_installment_date:last?dateValue(d.last_installment_date):null,next_installment_date:nextDate,next_collectible_balance:collectible,
-            created_by:userId
-          }).select('id').single();
-          if(inserted.error){errors.push('লাইন '+r.line+': '+inserted.error.message);continue;}
-          if(schedule.length){
-            const sch=await supabase.from('member_opening_loan_installment_schedule').insert(schedule.map(x=>({...x,opening_loan_id:inserted.data.id})));
-            if(sch.error){errors.push('লাইন '+r.line+': ঋণ সংরক্ষিত, কিন্তু কিস্তি সিডিউল হয়নি: '+sch.error.message);saved++;continue;}
-          }
+          const savedLoan=await supabase.rpc('save_opening_loan_with_schedule',{
+            p_loan_id:null,
+            p_loan:{
+              member_id:r.member_id,loan_no:String(d.loan_no).trim(),disbursement_date:dateValue(d.disbursement_date),project_name:String(d.project_name).trim(),loan_cycle:cycle,
+              principal_amount:principal,service_charge_amount:charge,amount_repaid_to_date:repaid,current_status:status,overdue_balance:arrears,last_installment_no:last,
+              last_installment_date:last?dateValue(d.last_installment_date):null,next_installment_date:nextDate,next_collectible_balance:collectible
+            },
+            p_schedule:schedule
+          });
+          if(savedLoan.error){errors.push('লাইন '+r.line+': '+savedLoan.error.message);continue;}
           saved++;
         }
       }
