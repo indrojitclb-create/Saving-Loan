@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-import * as pdfjsLib from 'pdfjs-dist';
+import * as pdfjsLib from 'pdfjs-dist';\nimport pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';\npdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
 import { supabase } from './lib/supabase';
 import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
