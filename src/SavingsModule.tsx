@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase } from './lib/supabase';\nimport OpeningDataImport from './OpeningDataImport';
 import { calculateLoanSchedule, calculateFirstInstallmentDate, buildInstallmentDates } from './lib/loanCalculation';
 
 type OpeningBalance = { member_id: string; gs_balance: number; lts_new_balance: number; optional_balance: number; opening_date: string; optional_opening_date?: string | null; optional_monthly_installment_amount?: number | null; optional_installments_paid?: number | null };
@@ -364,6 +364,20 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     if(!refreshed.error)setOpeningLoans((refreshed.data||[]) as OpeningLoan[]);
   }
 
+  async function refreshAfterOpeningImport(){
+    if(!supabase)return;
+    if(openingTab==='member'){
+      const refreshed=await supabase.from('members').select('*').eq('is_active',true).order('member_code');
+      if(!refreshed.error){setMembers(refreshed.data||[]);const updated=(refreshed.data||[]).find((m:any)=>m.id===memberId);if(updated)setMemberEditForm(old=>({...old,...Object.fromEntries(Object.keys(old).map(k=>[k,String(updated[k]??'')))}));}
+    }else if(openingTab==='savings'){
+      const refreshed=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date,optional_monthly_installment_amount,optional_installments_paid').eq('member_id',memberId).maybeSingle();
+      if(!refreshed.error)setOpening(refreshed.data||null);
+    }else{
+      const refreshed=await supabase.from('member_opening_loans').select('*').eq('member_id',memberId).order('disbursement_date',{ascending:false});
+      if(!refreshed.error)setOpeningLoans((refreshed.data||[]) as OpeningLoan[]);
+    }
+  }
+
   if (!canView) return <section className="panel"><h2>অনুমতি প্রয়োজন</h2><p>সঞ্চয় হিসাব দেখার অনুমতি নেই। Main Admin-এর কাছে Savings permission চান।</p></section>;
 
   return <section className="workspace">
@@ -382,6 +396,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
         </div>
       </div>
       {openingOnly && <div className="form-actions" style={{margin:'16px 0'}}><button type="button" className={openingTab==='member'?'':'secondary'} onClick={()=>setOpeningTab('member')}>সদস্যের সার্বিক তথ্য</button><button type="button" className={openingTab==='savings'?'':'secondary'} onClick={()=>setOpeningTab('savings')}>সঞ্চয় ওপেনিং</button><button type="button" className={openingTab==='loan'?'':'secondary'} onClick={()=>setOpeningTab('loan')}>ঋণ ওপেনিং</button></div>}
+      {openingOnly && <OpeningDataImport tab={openingTab} members={members} samities={samities} canDo={canDo} userId={userId} onDone={refreshAfterOpeningImport}/>}
       {openingOnly && openingTab==='member' && <section className="panel"><h3>সদস্যের সার্বিক তথ্য</h3><p className="muted">এখানে শুধু আগে থেকে নিবন্ধিত সদস্যের তথ্য দেখা যাবে। নতুন সদস্য ভর্তি এই মডিউলে করা যাবে না। বিদ্যমান তথ্য পরিবর্তনের জন্য Opening Data → Update অনুমতি প্রয়োজন।</p><div className="stats-grid"><div className="stat-card"><span>সদস্য কোড</span><strong>{selectedMember.member_code}</strong></div><div className="stat-card"><span>সদস্যের নাম</span><strong>{selectedMember.full_name}</strong></div><div className="stat-card"><span>মোবাইল</span><strong>{selectedMember.phone||'—'}</strong></div></div>{canDo('opening_data','update')?<form className="employee-form" onSubmit={saveOpeningMemberInfo}><div className="form-grid">{[['পিতার নাম','father_name','text'],['মাতার নাম','mother_name','text'],['স্বামী/স্ত্রীর নাম','spouse_name','text'],['ভর্তির তারিখ','admission_date','date'],['জন্ম তারিখ','date_of_birth','date'],['বৈবাহিক অবস্থা','marital_status','text'],['শিক্ষাগত যোগ্যতা','education_level','text'],['মোবাইল','phone','tel'],['জাতীয়তা','nationality','text'],['স্মার্ট আইডি','smart_id','text'],['জাতীয় পরিচয়পত্র','national_id','text'],['জন্ম নিবন্ধন','birth_registration_no','text'],['টিআইএন','tin_no','text'],['পেশা','profession','text'],['ধর্ম','religion','text'],['সদস্যের ধরন','member_type','text'],['ইউনিয়ন/ওয়ার্ড','present_union','text'],['বর্তমান ঠিকানা','present_house_street','text'],['পরিবারের যোগাযোগ নম্বর','family_contact_no','tel'],['স্থায়ী ঠিকানা','permanent_house_street','text'],['স্থায়ী যোগাযোগ নম্বর','permanent_contact_no','tel'],['পরিবারের সদস্য সংখ্যা','family_member_count','number'],['বার্ষিক আয়','yearly_income','number'],['জমির পরিমাণ','land_area','number'],['জমির একক','land_area_unit','text'],['মন্তব্য','remarks','text']].map(([label,key,type])=><label key={key}>{label}<input type={type} value={memberEditForm[key]??''} onChange={e=>setMemberEditForm(old=>({...old,[key]:e.target.value}))}/></label>)}</div>{memberEditNotice&&<div className="notice">{memberEditNotice}</div>}<div className="form-actions"><button disabled={memberEditBusy}>{memberEditBusy?'সংরক্ষণ হচ্ছে...':'সদস্যের তথ্য হালনাগাদ'}</button></div></form>:<><div className="form-grid">{[['পিতার নাম','father_name'],['মাতার নাম','mother_name'],['স্বামী/স্ত্রীর নাম','spouse_name'],['ভর্তির তারিখ','admission_date'],['জন্ম তারিখ','date_of_birth'],['বৈবাহিক অবস্থা','marital_status'],['শিক্ষাগত যোগ্যতা','education_level'],['মোবাইল','phone'],['জাতীয়তা','nationality'],['স্মার্ট আইডি','smart_id'],['জাতীয় পরিচয়পত্র','national_id'],['জন্ম নিবন্ধন','birth_registration_no'],['টিআইএন','tin_no'],['পেশা','profession'],['ধর্ম','religion'],['সদস্যের ধরন','member_type'],['ইউনিয়ন/ওয়ার্ড','present_union'],['বর্তমান ঠিকানা','present_house_street'],['পরিবারের যোগাযোগ নম্বর','family_contact_no'],['স্থায়ী ঠিকানা','permanent_house_street'],['স্থায়ী যোগাযোগ নম্বর','permanent_contact_no'],['পরিবারের সদস্য সংখ্যা','family_member_count'],['বার্ষিক আয়','yearly_income'],['জমির পরিমাণ','land_area'],['জমির একক','land_area_unit'],['মন্তব্য','remarks']].map(([label,key])=><label key={key}>{label}<input readOnly value={selectedMember[key]??'—'}/></label>)}</div><p className="muted">দেখার অনুমতি আছে, কিন্তু পরিবর্তনের অনুমতি নেই।</p></>}</section>}
       {openingOnly && openingTab==='savings' && (canDo('opening_data','create') || canDo('opening_data','update')) && <form className="employee-form" onSubmit={saveOpeningBalance}>
         <h3>Opening Data Input — প্রারম্ভিক সঞ্চয় স্থিতি</h3>
