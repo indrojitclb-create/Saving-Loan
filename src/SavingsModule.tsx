@@ -59,6 +59,11 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [memberEditForm,setMemberEditForm]=useState<Record<string,string>>({});
   const [memberEditBusy,setMemberEditBusy]=useState(false);
   const [memberEditNotice,setMemberEditNotice]=useState('');
+  const [reviewBalances,setReviewBalances]=useState<OpeningBalance[]>([]);
+  const [reviewLoans,setReviewLoans]=useState<OpeningLoan[]>([]);
+  const [reviewSearch,setReviewSearch]=useState('');
+  const [reviewLoading,setReviewLoading]=useState(false);
+  const [reviewNotice,setReviewNotice]=useState('');
 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
@@ -66,6 +71,40 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const selectedMember = members.find(m => m.id === memberId);
   const selectedSamity = samities.find(m => m.id === selectedMember?.samity_id);
 
+  useEffect(() => {
+    if (!openingOnly || !supabase || members.length===0) {
+      if (!openingOnly) { setReviewBalances([]); setReviewLoans([]); }
+      return;
+    }
+    let live=true;
+    (async()=>{
+      setReviewLoading(true);setReviewNotice('');
+      try {
+        const fetchAll = async (table:string, columns:string) => {
+          const all:any[]=[];let from=0;const pageSize=500;
+          while(true){
+            const result=await supabase!.from(table).select(columns).range(from,from+pageSize-1);
+            if(result.error)throw result.error;
+            const page=result.data||[];all.push(...page);
+            if(page.length<pageSize)break;
+            from+=pageSize;
+          }
+          return all;
+        };
+        const [balances,loans]=await Promise.all([
+          fetchAll('member_savings_opening_balances','member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date,optional_monthly_installment_amount,optional_installments_paid'),
+          fetchAll('member_opening_loans','id,member_id,loan_no,disbursement_date,project_name,loan_cycle,principal_amount,service_charge_amount,amount_repaid_to_date,current_status,outstanding_balance,overdue_balance,last_installment_no,last_installment_date,next_installment_date,next_collectible_balance,reference_no,notes')
+        ]);
+        if(!live)return;
+        const activeIds=new Set(members.map(m=>m.id));
+        setReviewBalances((balances as OpeningBalance[]).filter(x=>activeIds.has(x.member_id)));
+        setReviewLoans((loans as OpeningLoan[]).filter(x=>activeIds.has(x.member_id)));
+      } catch(err) {
+        if(live)setReviewNotice('সংরক্ষিত Opening Data পড়া যায়নি: '+(err instanceof Error?err.message:'অজানা সমস্যা'));
+      } finally { if(live)setReviewLoading(false); }
+    })();
+    return()=>{live=false;};
+  },[openingOnly,members]);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -381,6 +420,33 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     </div>
     {openingOnly && <div className="form-actions" style={{margin:'16px 0'}}><button type="button" className={openingTab==='member'?'':'secondary'} onClick={()=>setOpeningTab('member')}>সদস্যের সার্বিক তথ্য</button><button type="button" className={openingTab==='savings'?'':'secondary'} onClick={()=>setOpeningTab('savings')}>সঞ্চয় ওপেনিং</button><button type="button" className={openingTab==='loan'?'':'secondary'} onClick={()=>setOpeningTab('loan')}>ঋণ ওপেনিং</button></div>}
     {openingOnly && <OpeningDataImport tab={openingTab} members={members} samities={samities} canDo={canDo} userId={userId} onDone={refreshAfterOpeningImport}/>}
+    {openingOnly && <section className="panel">
+      <h3>সংরক্ষিত Opening Data — সদস্যভিত্তিক পর্যালোচনা</h3>
+      <p className="muted">এই তালিকা সরাসরি ডাটাবেজে সংরক্ষিত Opening Savings ও Opening Loan রেকর্ড থেকে তৈরি। এখানে নতুন করে কোনো তথ্য লেখা বা পরিবর্তন করা হয় না।</p>
+      <div className="form-grid"><label>সদস্য খুঁজুন<input value={reviewSearch} onChange={e=>setReviewSearch(e.target.value)} placeholder="সদস্য কোড বা নাম লিখুন"/></label></div>
+      {reviewNotice&&<div className="notice">{reviewNotice}</div>}
+      {reviewLoading?<p className="muted">সংরক্ষিত তথ্য লোড হচ্ছে...</p>:(()=>{
+        const term=reviewSearch.trim().toLowerCase();
+        const rows=members.filter(m=>!term||m.member_code.toLowerCase().includes(term)||m.full_name.toLowerCase().includes(term)).map(m=>{
+          const b=reviewBalances.find(x=>x.member_id===m.id);
+          const loans=reviewLoans.filter(x=>x.member_id===m.id);
+          return {m,b,loans,totalSavings:Number(b?.gs_balance||0)+Number(b?.lts_new_balance||0)+Number(b?.optional_balance||0),totalLoan:loans.reduce((sum,x)=>sum+Number(x.outstanding_balance||0),0)};
+        }).filter(x=>x.b||x.loans.length);
+        return <>
+          <div className="stats-grid">
+            <div className="stat-card"><span>সঞ্চয় ওপেনিং সদস্য</span><strong>{reviewBalances.length.toLocaleString('en-BD')}</strong></div>
+            <div className="stat-card"><span>প্রারম্ভিক ঋণ রেকর্ড</span><strong>{reviewLoans.length.toLocaleString('en-BD')}</strong></div>
+            <div className="stat-card"><span>মোট সঞ্চয় ওপেনিং</span><strong>{money(reviewBalances.reduce((sum,x)=>sum+Number(x.gs_balance||0)+Number(x.lts_new_balance||0)+Number(x.optional_balance||0),0))}</strong></div>
+            <div className="stat-card"><span>মোট ঋণ অবশিষ্ট</span><strong>{money(reviewLoans.reduce((sum,x)=>sum+Number(x.outstanding_balance||0),0))}</strong></div>
+          </div>
+          <div className="table-wrap"><table><thead><tr><th>সদস্য কোড</th><th>সদস্যের নাম</th><th>Opening Date</th><th>GS</th><th>LTS-New</th><th>Optional</th><th>মোট সঞ্চয়</th><th>ঋণ সংখ্যা</th><th>ঋণ অবশিষ্ট</th></tr></thead><tbody>
+            {rows.map(({m,b,loans,totalSavings,totalLoan})=><tr key={m.id}><td>{m.member_code}</td><td>{m.full_name}</td><td>{b?.opening_date||'—'}</td><td>{money(Number(b?.gs_balance||0))}</td><td>{money(Number(b?.lts_new_balance||0))}</td><td>{money(Number(b?.optional_balance||0))}</td><td><b>{money(totalSavings)}</b></td><td>{loans.length}</td><td>{money(totalLoan)}</td></tr>)}
+            {rows.length===0&&<tr><td colSpan={9} className="empty">এই অনুসন্ধানে কোনো Opening Data পাওয়া যায়নি।</td></tr>}
+          </tbody></table></div>
+          <p className="muted">ঋণের পৃথক রেকর্ড ও কিস্তির বিস্তারিত দেখতে সদস্য নির্বাচন করে “ঋণ ওপেনিং” ট্যাব খুলুন।</p>
+        </>;
+      })()}
+    </section>}
     {selectedMember && <>
       <div className="panel">
         <b>{selectedMember.member_code} — {selectedMember.full_name}</b>
