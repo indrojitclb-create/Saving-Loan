@@ -52,8 +52,14 @@ const aliases: Record<string,string[]> = {
   source_line:['__source_line'],
   optional_monthly_installment_amount:['optional monthly installment amount','optional_monthly_installment_amount','মাসিক জমা','মাসিক কিস্তি'],
   optional_installments_paid:['optional installments paid','optional_installments_paid','জমাকৃত কিস্তি','কিস্তি সংখ্যা'],
-  loan_no:['loan no','loan_no','ঋণ নম্বর','ঋণ নং'],
-  disbursement_date:['disbursement date','disbursement_date','ঋণ বিতরণের তারিখ','বিতরণের তারিখ'],
+  loan_no:['loan no','loan_no','loan code','ঋণ নম্বর','ঋণ নং'],
+  disbursement_date:['disbursement date','disbursement_date','disburse date','ঋণ বিতরণের তারিখ','বিতরণের তারিখ'],
+  loan_balance:['loan balance','loan_balance','মোট অবশিষ্ট ঋণ'],
+  due_amount:['due amount','due_amount','বকেয়া কিস্তি','বকেয়া কিস্তি'],
+  principal_recovery:['principal recovery','principal_recovery','আসল আদায়','আসল আদায়'],
+  service_charge_recovery:['service charge recovery','service_charge_recovery','সেবামূল্য আদায়','সেবামূল্য আদায়'],
+  rebate:['rebate','রেয়াত','রেয়াত'],
+  first_repayment_date:['first repayment date','first_repayment_date','প্রথম কিস্তির তারিখ'],
   project_name:['project','project name','project_name','প্রকল্প','প্রকল্পের নাম'],
   loan_cycle:['loan cycle','loan_cycle','দফা','দফা নং','কততম দফা'],
   principal_amount:['principal','principal amount','principal_amount','আসল','আসল ঋণ'],
@@ -126,6 +132,43 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         const ws=wb.Sheets[wb.SheetNames[0]];
         matrix=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}) as any[][];
       }
+      // Support the approved two-row Loan & Savings migration sheet.
+      // Product row contains the common project/product label (e.g. APON).
+      if(tab==='loan' && matrix.length>=4){
+        const top=(matrix[0]||[]).map((v:any)=>String(v??'').trim());
+        const sub=(matrix[1]||[]).map((v:any)=>String(v??'').trim());
+        const combined=top.map((v:string,j:number)=>sub[j]||v);
+        const migrationLoanHeaders=combined.some((v:string)=>norm(v)==='member code')
+          && combined.some((v:string)=>norm(v)==='disburse amount')
+          && combined.some((v:string)=>norm(v)==='loan balance')
+          && combined.some((v:string)=>norm(v)==='due amount');
+        if(migrationLoanHeaders){
+          const codeIndex=combined.findIndex((v:string)=>norm(v)==='member code');
+          const slIndex=top.findIndex((v:string)=>norm(v)==='sl');
+          const productRow=(matrix[2]||[]).map((v:any)=>String(v??'').trim());
+          const productIndex=productRow.findIndex((v:string)=>/^product\s*:/i.test(v));
+          const productName=productIndex>=0?productRow[productIndex].replace(/^product\s*:\s*/i,'').trim():'';
+          const normalizedHeaders=combined.map((v:string)=>({
+            'disburse amount':'principal amount',
+            'principal recovery':'principal recovery',
+            'service charge recovery':'service charge recovery',
+            'loan balance':'loan balance',
+            'due amount':'due amount'
+          }[norm(v)]||v));
+          const dataRows=matrix.slice(3).map((r:any[],j:number)=>({r,sourceLine:j+4}))
+            .filter(({r}:any)=>String(r?.[codeIndex]??'').trim()!=='' && (slIndex<0 || /^\\d+$/.test(String(r?.[slIndex]??'').trim())));
+          if(!dataRows.length)throw new Error('এই Loan Migration Sheet-এ কোনো সদস্যের ডেটা সারি পাওয়া যায়নি।');
+          matrix=[normalizedHeaders.concat('__source_line','__product_name'),...dataRows.map(({r,sourceLine}:any)=>r.concat(sourceLine,productName))];
+          const h=matrix[0] as string[];
+          const addAlias=(header:string,key:string)=>{const ix=h.findIndex(x=>norm(x)===norm(header));if(ix>=0)h[ix]=key;};
+          addAlias('principal amount','principal_amount');
+          addAlias('loan balance','loan_balance');
+          addAlias('due amount','due_amount');
+          addAlias('principal recovery','principal_recovery');
+          addAlias('service charge recovery','service_charge_recovery');
+          addAlias('__product_name','project_name');
+        }
+      }
       // Support the approved two-row Member migration balance sheet.
       // Row 3 is the product label; totals and footer rows are excluded.
       if(tab==='savings' && matrix.length>=4){
@@ -149,13 +192,19 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
       if(matrix.length<2)throw new Error('ফাইলে শিরোনামসহ অন্তত একটি ডেটা সারি থাকতে হবে।');
       const headers=matrix[0].map(keyFor);
       if(!headers.includes('member_code'))throw new Error('সদস্য কোড (Member Code) কলাম পাওয়া যায়নি।');
-      const missing=fieldList[tab].filter(k=>!headers.includes(k) && (tab==='savings'?['opening_date','gs_balance','optional_balance'].includes(k) && !(k==='lts_new_balance' && fileName.toLowerCase().includes('.xls')):tab==='loan'?['loan_no','disbursement_date','project_name','principal_amount'].includes(k):false));
+      const missing=fieldList[tab].filter(k=>!headers.includes(k) && (tab==='savings'?['opening_date','gs_balance','optional_balance'].includes(k) && !(k==='lts_new_balance' && fileName.toLowerCase().includes('.xls')):tab==='loan'?['loan_no','disbursement_date','project_name','principal_amount','service_charge_amount','amount_repaid_to_date','overdue_balance'].includes(k):false));
       if(missing.length)throw new Error('প্রয়োজনীয় কলাম পাওয়া যায়নি: '+missing.map(k=>labels[k]||k).join(', '));
       const existing=new Map(members.map(m=>[String(m.member_code).trim().toLowerCase(),m]));
       const seen=new Set<string>();
       const parsed:ImportRow[]=matrix.slice(1).map((cells:any[],i)=>{
         const data:Record<string,any>={};
         headers.forEach((k: string | undefined,j: number)=>{if(k)data[k]=cells[j]??'';});
+        if(tab==='loan' && data.loan_balance!==undefined){
+          const recovered=num(data.principal_recovery)+num(data.service_charge_recovery);
+          data.amount_repaid_to_date=recovered;
+          data.service_charge_amount=num(data.loan_balance)+recovered-num(data.principal_amount);
+          data.overdue_balance=num(data.due_amount);
+        }
         const code=String(data.member_code??'').trim();
         const member=existing.get(code.toLowerCase());
         let error='';
