@@ -228,7 +228,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
             optional_monthly_installment_amount:num(d.optional_balance)>0?num(d.optional_monthly_installment_amount):0,
             optional_installments_paid:num(d.optional_balance)>0?num(d.optional_installments_paid):0,created_by:userId,updated_by:userId
           },{onConflict:'member_id'});
-          if(res.error)errors.push('লাইন '+r.line+': '+res.error.message);else saved++;
+          if(res.error)errors.push('লাইন '+r.line+': '+res.error.message);else {saved++;savedLines.push(r.line);}
         }
       }else{
         const closuresResult=await supabase.from('samity_week_closures').select('samity_id,closure_date');
@@ -272,7 +272,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
             p_schedule:schedule
           });
           if(savedLoan.error){errors.push('লাইন '+r.line+': '+savedLoan.error.message);continue;}
-          saved++;
+          saved++;savedLines.push(r.line);
         }
       }
       setSavedCount(saved);setSavedRows(rows.filter(r=>savedLines.includes(r.line)));
