@@ -60,7 +60,7 @@ const aliases: Record<string,string[]> = {
   principal_recovery:['principal recovery','principal_recovery','আসল আদায়','আসল আদায়'],
   service_charge_recovery:['service charge recovery','service_charge_recovery','সেবামূল্য আদায়','সেবামূল্য আদায়'],
   rebate:['rebate','রেয়াত','রেয়াত'],
-  first_repayment_date:['first repayment date','first_repayment_date','প্রথম কিস্তির তারিখ'],
+
   project_name:['project','project name','project_name','প্রকল্প','প্রকল্পের নাম'],
   loan_cycle:['loan cycle','loan_cycle','দফা','দফা নং','কততম দফা'],
   principal_amount:['principal','principal amount','principal_amount','আসল','আসল ঋণ'],
