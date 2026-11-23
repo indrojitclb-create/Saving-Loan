@@ -54,6 +54,7 @@ const aliases: Record<string,string[]> = {
   optional_installments_paid:['optional installments paid','optional_installments_paid','জমাকৃত কিস্তি','কিস্তি সংখ্যা'],
   loan_no:['loan no','loan_no','loan code','ঋণ নম্বর','ঋণ নং'],
   disbursement_date:['disbursement date','disbursement_date','disburse date','ঋণ বিতরণের তারিখ','বিতরণের তারিখ'],
+  first_repayment_date:['first repayment date','first_repayment_date','প্রথম কিস্তির তারিখ'],
   loan_balance:['loan balance','loan_balance','মোট অবশিষ্ট ঋণ'],
   due_amount:['due amount','due_amount','বকেয়া কিস্তি','বকেয়া কিস্তি'],
   principal_recovery:['principal recovery','principal_recovery','আসল আদায়','আসল আদায়'],
@@ -226,7 +227,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         }else{
           const principal=num(data.principal_amount),charge=num(data.service_charge_amount),repaid=num(data.amount_repaid_to_date),arrears=num(data.overdue_balance),cycle=num(data.loan_cycle||1),last=num(data.last_installment_no||0);
           if(!String(data.loan_no||'').trim()||!dateValue(data.disbursement_date)||!String(data.project_name||'').trim())error='ঋণ নম্বর, বিতরণের তারিখ ও প্রকল্প আবশ্যক';
-          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||cycle<1||!Number.isInteger(cycle)||last<0||last>46||!Number.isInteger(last))error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
+          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||arrears>Math.max(0,principal+charge-repaid)||cycle<1||!Number.isInteger(cycle)||last<0||last>46||!Number.isInteger(last))error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
           else if(last>0&&!dateValue(data.last_installment_date))error='সর্বশেষ কিস্তির তারিখ আবশ্যক';
           else if(data.current_status==='closed'&&principal+charge-repaid>0)error='অবশিষ্ট স্থিতি থাকলে ঋণ বন্ধ করা যাবে না';
         }
@@ -300,7 +301,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           if(status==='active'&&last<46&&collectible>0){
             try{
               const all=calculateLoanSchedule(principal);let first:string;
-              if(last===0)first=calculateFirstInstallmentDate(dateValue(d.disbursement_date),Number(samity.meeting_day),closedDates);
+              if(last===0)first=dateValue(d.first_repayment_date)||calculateFirstInstallmentDate(dateValue(d.disbursement_date),Number(samity.meeting_day),closedDates);
               else{const day=new Date(dateValue(d.last_installment_date)+'T12:00:00');if(Number.isNaN(day.getTime())||day.getDay()!==Number(samity.meeting_day))throw new Error('শেষ কিস্তির তারিখ সভার দিনের সঙ্গে মেলে না');day.setDate(day.getDate()+7);while(closedDates.includes([day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-')))day.setDate(day.getDate()+7);first=[day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-');}
               const dates=buildInstallmentDates(first,Number(samity.meeting_day),closedDates).slice(0,46-last);
               const rest=all.filter(x=>x.weekNo>last),raw=rest.reduce((s,x)=>s+x.totalDue,0);let allocated=0;
