@@ -49,6 +49,7 @@ const aliases: Record<string,string[]> = {
   lts_new_balance:['lts new balance','lts_new_balance','lts balance','এলটিএস স্থিতি'],
   optional_balance:['optional balance','optional_balance','optional savings','ঐচ্ছিক সঞ্চয়','অপশনাল সঞ্চয়'],
   optional_opening_date:['optional opening date','optional_opening_date','optional savings opening date','ঐচ্ছিক সঞ্চয়ের তারিখ'],
+  source_line:['__source_line'],
   optional_monthly_installment_amount:['optional monthly installment amount','optional_monthly_installment_amount','মাসিক জমা','মাসিক কিস্তি'],
   optional_installments_paid:['optional installments paid','optional_installments_paid','জমাকৃত কিস্তি','কিস্তি সংখ্যা'],
   loan_no:['loan no','loan_no','ঋণ নম্বর','ঋণ নং'],
@@ -148,7 +149,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
       if(matrix.length<2)throw new Error('ফাইলে শিরোনামসহ অন্তত একটি ডেটা সারি থাকতে হবে।');
       const headers=matrix[0].map(keyFor);
       if(!headers.includes('member_code'))throw new Error('সদস্য কোড (Member Code) কলাম পাওয়া যায়নি।');
-      const missing=fieldList[tab].filter(k=>!headers.includes(k) && (tab==='savings'?['opening_date','gs_balance','lts_new_balance','optional_balance'].includes(k):tab==='loan'?['loan_no','disbursement_date','project_name','principal_amount'].includes(k):false));
+      const missing=fieldList[tab].filter(k=>!headers.includes(k) && (tab==='savings'?['opening_date','gs_balance','optional_balance'].includes(k) && !(k==='lts_new_balance' && fileName.toLowerCase().includes('.xls')):tab==='loan'?['loan_no','disbursement_date','project_name','principal_amount'].includes(k):false));
       if(missing.length)throw new Error('প্রয়োজনীয় কলাম পাওয়া যায়নি: '+missing.map(k=>labels[k]||k).join(', '));
       const existing=new Map(members.map(m=>[String(m.member_code).trim().toLowerCase(),m]));
       const seen=new Set<string>();
@@ -172,7 +173,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           const total=num(data.gs_balance)+num(data.lts_new_balance)+num(data.optional_balance);
           if(!dateValue(data.opening_date))error='ওপেনিং তারিখ নেই বা ভুল';
           else if(![data.gs_balance,data.lts_new_balance,data.optional_balance].every(v=>Number.isFinite(num(v))&&num(v)>=0)||total<=0)error='সঞ্চয় স্থিতি শূন্যের বেশি এবং ঋণাত্মক নয় হতে হবে';
-          else if(num(data.optional_balance)>0&&(!dateValue(data.optional_opening_date)||num(data.optional_monthly_installment_amount)<=0||num(data.optional_installments_paid)<0||!Number.isInteger(num(data.optional_installments_paid))))error='Optional Savings-এর তারিখ, মাসিক জমা ও কিস্তি সংখ্যা যাচাই করুন';
+          else if(num(data.optional_balance)>0&&(!dateValue(data.optional_opening_date)||(data.optional_monthly_installment_amount!==undefined&&num(data.optional_monthly_installment_amount)<=0)||(data.optional_installments_paid!==undefined&&(num(data.optional_installments_paid)<0||!Number.isInteger(num(data.optional_installments_paid))))))error='Optional Savings-এর তারিখ, মাসিক জমা ও কিস্তি সংখ্যা যাচাই করুন';
         }else{
           const principal=num(data.principal_amount),charge=num(data.service_charge_amount),repaid=num(data.amount_repaid_to_date),arrears=num(data.overdue_balance),cycle=num(data.loan_cycle||1),last=num(data.last_installment_no||0);
           if(!String(data.loan_no||'').trim()||!dateValue(data.disbursement_date)||!String(data.project_name||'').trim())error='ঋণ নম্বর, বিতরণের তারিখ ও প্রকল্প আবশ্যক';
@@ -180,7 +181,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           else if(last>0&&!dateValue(data.last_installment_date))error='সর্বশেষ কিস্তির তারিখ আবশ্যক';
           else if(data.current_status==='closed'&&principal+charge-repaid>0)error='অবশিষ্ট স্থিতি থাকলে ঋণ বন্ধ করা যাবে না';
         }
-        return {line:Number(data.__source_line)||i+2,member_code:code,member_id:member?.id,name:member?.full_name,data,error};
+        return {line:Number(data.source_line)||i+2,member_code:code,member_id:member?.id,name:member?.full_name,data,error};
       }).filter(r=>r.member_code||Object.keys(r.data).length);
       if(!parsed.length)throw new Error('ফাইলে কোনো ডেটা সারি পাওয়া যায়নি।');
       if(tab==='savings'||tab==='loan'){
