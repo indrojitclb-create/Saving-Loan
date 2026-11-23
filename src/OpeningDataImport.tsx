@@ -86,11 +86,14 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState('');
   const [fileKind,setFileKind]=useState('');
+  const [validated,setValidated]=useState(false);
+  const [savedRows,setSavedRows]=useState<ImportRow[]>([]);
+  const [savedCount,setSavedCount]=useState(0);
   const ready=rows.length>0 && rows.every(r=>!r.error);
   const title=tab==='member'?'সদস্যের সার্বিক তথ্য':tab==='savings'?'সঞ্চয় ওপেনিং':'ঋণ ওপেনিং';
   const validCount=useMemo(()=>rows.filter(r=>!r.error).length,[rows]);
   async function readFile(file:File){
-    setNotice('');setRows([]);setFileName(file.name);
+    setNotice('');setRows([]);setSavedRows([]);setSavedCount(0);setValidated(false);setFileName(file.name);
     try{
       let matrix:any[]=[];
       if(/\\.pdf$/i.test(file.name)){
@@ -173,7 +176,8 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         }
       }
       setRows(parsed);
-      setNotice('ফাইল পড়া হয়েছে। সংরক্ষণের আগে নিচের Preview যাচাই করুন।');
+      setValidated(false);
+      setNotice('ফাইল পড়া হয়েছে। এখন “ফাইল যাচাই” চাপুন; যাচাই সফল না হলে সংরক্ষণ করা যাবে না।');
     }catch(err){setNotice(err instanceof Error?err.message:'ফাইল পড়া যায়নি।');}
   }
   async function saveImport(){
@@ -181,7 +185,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
     const action=tab==='member'?'update':'create';
     if(!canDo('opening_data',action)){setNotice('এই Import করার অনুমতি নেই।');return;}
     setBusy(true);setNotice('');
-    let saved=0;const errors:string[]=[];
+    let saved=0;const errors:string[]=[];const savedLines:number[]=[];
     try{
       if(tab==='member'){
         const balanceResult=await supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance').in('member_id',rows.map(r=>r.member_id));
@@ -192,7 +196,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           const payload:Record<string,any>={};
           for(const k of fieldList.member){if(k==='member_code'||r.data[k]===undefined||r.data[k]==='')continue;payload[k]=['family_member_count','yearly_income','land_area'].includes(k)?num(r.data[k]):r.data[k];}
           const res=await supabase.from('members').update(payload).eq('id',r.member_id);
-          if(res.error)errors.push('লাইন '+r.line+': '+res.error.message);else saved++;
+          if(res.error)errors.push('লাইন '+r.line+': '+res.error.message);else {saved++;savedLines.push(r.line);}
         }
       }else if(tab==='savings'){
         for(const r of rows){
@@ -250,6 +254,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           saved++;
         }
       }
+      setSavedCount(saved);setSavedRows(rows.filter(r=>savedLines.includes(r.line)));
       setNotice(saved+'টি রেকর্ড সংরক্ষিত হয়েছে।'+(errors.length?' সমস্যা: '+errors.join(' | '):''));
       if(saved)onDone();
     }catch(err){setNotice('Import বন্ধ হয়েছে: '+(err instanceof Error?err.message:'অজানা সমস্যা'));}
@@ -262,12 +267,14 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
     {fileName&&<p className="muted">{fileName} · {fileKind}</p>}
     {notice&&<div className="notice">{notice}</div>}
     {rows.length>0&&<>
+      <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>{setValidated(false);setNotice('ফাইল পুনরায় যাচাই করুন।');}}>{validated?'পুনরায় যাচাই':'ফাইল যাচাই করুন'}</button><span className="muted">{validated?'যাচাই সম্পন্ন':'যাচাই না হওয়া পর্যন্ত সংরক্ষণ বন্ধ'}</span></div>
       <p className="muted">Preview: মোট {rows.length} সারি · সঠিক {validCount} · সমস্যা {rows.length-validCount}</p>
       <div className="table-wrap"><table><thead><tr><th>লাইন</th><th>Member Code</th><th>সদস্য</th><th>Import তথ্য</th><th>যাচাই</th></tr></thead><tbody>
         {rows.slice(0,100).map(r=><tr key={r.line}><td>{r.line}</td><td>{r.member_code||'—'}</td><td>{r.name||'—'}</td><td>{fieldList[tab].filter(k=>k!=='member_code'&&r.data[k]!==undefined&&r.data[k]!=='').map(k=>(labels[k]||k)+': '+String(r.data[k])).join(' · ')||'—'}</td><td>{r.error||'সঠিক'}</td></tr>)}
       </tbody></table></div>
       {rows.length>100&&<p className="muted">প্রথম ১০০টি সারি দেখানো হচ্ছে; বাকি সারিও যাচাইয়ের পর সংরক্ষণ হবে।</p>}
-      <div className="form-actions"><button type="button" disabled={!ready||busy||!canDo('opening_data',tab==='member'?'update':'create')} onClick={saveImport}>{busy?'সংরক্ষণ হচ্ছে...':rows.length+'টি রেকর্ড সংরক্ষণ'}</button><button type="button" className="secondary" disabled={busy} onClick={()=>{setRows([]);setFileName('');setNotice('');}}>Preview বাতিল</button></div>
+      <div className="form-actions"><button type="button" disabled={!ready||!validated||busy||!canDo('opening_data',tab==='member'?'update':'create')} onClick={saveImport}>{busy?'সংরক্ষণ হচ্ছে...':rows.length+'টি রেকর্ড সংরক্ষণ'}</button><button type="button" className="secondary" disabled={busy} onClick={()=>{setRows([]);setFileName('');setNotice('');setValidated(false);setSavedRows([]);setSavedCount(0);}}>Preview বাতিল</button></div>
     </>}
+    {savedCount>0&&<section className="panel" style={{marginTop:16}}><h3>সংরক্ষিত Opening Data — পর্যালোচনা</h3><p className="muted">সফলভাবে সংরক্ষিত {savedCount}টি রেকর্ডের তালিকা</p><div className="table-wrap"><table><thead><tr><th>লাইন</th><th>সদস্য কোড</th><th>সদস্য</th><th>সংরক্ষিত তথ্য</th><th>অবস্থা</th></tr></thead><tbody>{savedRows.map(r=><tr key={r.line}><td>{r.line}</td><td>{r.member_code}</td><td>{r.name||'—'}</td><td>{fieldList[tab].filter(k=>k!=='member_code'&&r.data[k]!==undefined&&r.data[k]!=='').map(k=>(labels[k]||k)+': '+String(r.data[k])).join(' · ')||'—'}</td><td>সংরক্ষিত</td></tr>)}</tbody></table></div></section>}
   </section>;
 }
