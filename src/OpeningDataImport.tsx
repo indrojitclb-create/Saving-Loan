@@ -267,7 +267,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
     {fileName&&<p className="muted">{fileName} · {fileKind}</p>}
     {notice&&<div className="notice">{notice}</div>}
     {rows.length>0&&<>
-      <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>{setValidated(false);setNotice('ফাইল পুনরায় যাচাই করুন।');}}>{validated?'পুনরায় যাচাই':'ফাইল যাচাই করুন'}</button><span className="muted">{validated?'যাচাই সম্পন্ন':'যাচাই না হওয়া পর্যন্ত সংরক্ষণ বন্ধ'}</span></div>
+      <div className="form-actions"><button type="button" className="secondary" disabled={busy} onClick={()=>{const ok=rows.length>0&&rows.every(r=>!r.error);setValidated(ok);setNotice(ok?'ফাইল যাচাই সফল। Preview দেখে সংরক্ষণ করুন।':'যাচাই ব্যর্থ: Preview-তে দেখানো ভুলগুলো সংশোধন করে ফাইল আবার দিন।');}}>{validated?'যাচাই সম্পন্ন':'ফাইল যাচাই করুন'}</button><span className="muted">{validated?'যাচাই সম্পন্ন':'যাচাই না হওয়া পর্যন্ত সংরক্ষণ বন্ধ'}</span></div>
       <p className="muted">Preview: মোট {rows.length} সারি · সঠিক {validCount} · সমস্যা {rows.length-validCount}</p>
       <div className="table-wrap"><table><thead><tr><th>লাইন</th><th>Member Code</th><th>সদস্য</th><th>Import তথ্য</th><th>যাচাই</th></tr></thead><tbody>
         {rows.slice(0,100).map(r=><tr key={r.line}><td>{r.line}</td><td>{r.member_code||'—'}</td><td>{r.name||'—'}</td><td>{fieldList[tab].filter(k=>k!=='member_code'&&r.data[k]!==undefined&&r.data[k]!=='').map(k=>(labels[k]||k)+': '+String(r.data[k])).join(' · ')||'—'}</td><td>{r.error||'সঠিক'}</td></tr>)}
