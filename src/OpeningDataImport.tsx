@@ -48,7 +48,7 @@ const aliases: Record<string,string[]> = {
   gs_balance:['gs balance','gs_balance','general savings','জিএস স্থিতি','সাধারণ সঞ্চয়'],
   lts_new_balance:['lts new balance','lts_new_balance','lts balance','এলটিএস স্থিতি'],
   optional_balance:['optional balance','optional_balance','optional savings','ঐচ্ছিক সঞ্চয়','অপশনাল সঞ্চয়'],
-  optional_opening_date:['optional opening date','optional_opening_date','ঐচ্ছিক সঞ্চয়ের তারিখ'],
+  optional_opening_date:['optional opening date','optional_opening_date','optional savings opening date','ঐচ্ছিক সঞ্চয়ের তারিখ'],
   optional_monthly_installment_amount:['optional monthly installment amount','optional_monthly_installment_amount','মাসিক জমা','মাসিক কিস্তি'],
   optional_installments_paid:['optional installments paid','optional_installments_paid','জমাকৃত কিস্তি','কিস্তি সংখ্যা'],
   loan_no:['loan no','loan_no','ঋণ নম্বর','ঋণ নং'],
@@ -65,7 +65,7 @@ const aliases: Record<string,string[]> = {
 };
 const norm = (v:any) => String(v ?? '').trim().toLowerCase().replace(/[\\s_\\-]+/g,' ');
 const keyFor = (h:any) => Object.keys(aliases).find(k => aliases[k].some(a => norm(a) === norm(h)));
-const num = (v:any) => v === '' || v === null || v === undefined ? 0 : Number(String(v).replace(/[,৳\\s]/g,''));
+const num = (v:any) => v === '' || v === null || v === undefined || String(v).trim() === '-' ? 0 : Number(String(v).replace(/[,৳\\s]/g,''));
 const dateValue = (v:any) => {
   if (v instanceof Date && !Number.isNaN(v.getTime())) return v.toISOString().slice(0,10);
   const s=String(v??'').trim();
@@ -125,6 +125,26 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         const ws=wb.Sheets[wb.SheetNames[0]];
         matrix=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:''}) as any[][];
       }
+      // Support the approved two-row Member migration balance sheet.
+      // Row 3 is the product label; totals and footer rows are excluded.
+      if(tab==='savings' && matrix.length>=4){
+        const top=(matrix[0]||[]).map((v:any)=>String(v??'').trim());
+        const sub=(matrix[1]||[]).map((v:any)=>String(v??'').trim());
+        const combined=top.map((v:string,j:number)=>sub[j]||v);
+        const migrationHeaders=combined.some((v:string)=>norm(v)==='member code')
+          && combined.some((v:string)=>norm(v)==='general savings')
+          && combined.some((v:string)=>norm(v)==='optional savings opening date');
+        if(migrationHeaders){
+          const codeIndex=combined.findIndex((v:string)=>norm(v)==='member code');
+          const slIndex=top.findIndex((v:string)=>norm(v)==='sl');
+          const addDateIndex=top.findIndex((v:string)=>norm(v)==='add. date'||norm(v)==='add date');
+          const normalizedHeaders=combined.map((v:string,j:number)=>j===addDateIndex?'opening date':v);
+          const dataRows=matrix.slice(3).map((r:any[],j:number)=>({r,sourceLine:j+4}))
+            .filter(({r}:any)=>String(r?.[codeIndex]??'').trim()!=='' && (slIndex<0 || /^\\d+$/.test(String(r?.[slIndex]??'').trim())));
+          if(!dataRows.length)throw new Error('এই Migration Sheet-এ কোনো সদস্যের ডেটা সারি পাওয়া যায়নি।');
+          matrix=[normalizedHeaders.concat('__source_line'),...dataRows.map(({r,sourceLine}:any)=>r.concat(sourceLine))];
+        }
+      }
       if(matrix.length<2)throw new Error('ফাইলে শিরোনামসহ অন্তত একটি ডেটা সারি থাকতে হবে।');
       const headers=matrix[0].map(keyFor);
       if(!headers.includes('member_code'))throw new Error('সদস্য কোড (Member Code) কলাম পাওয়া যায়নি।');
@@ -160,7 +180,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           else if(last>0&&!dateValue(data.last_installment_date))error='সর্বশেষ কিস্তির তারিখ আবশ্যক';
           else if(data.current_status==='closed'&&principal+charge-repaid>0)error='অবশিষ্ট স্থিতি থাকলে ঋণ বন্ধ করা যাবে না';
         }
-        return {line:i+2,member_code:code,member_id:member?.id,name:member?.full_name,data,error};
+        return {line:Number(data.__source_line)||i+2,member_code:code,member_id:member?.id,name:member?.full_name,data,error};
       }).filter(r=>r.member_code||Object.keys(r.data).length);
       if(!parsed.length)throw new Error('ফাইলে কোনো ডেটা সারি পাওয়া যায়নি।');
       if(tab==='savings'||tab==='loan'){
