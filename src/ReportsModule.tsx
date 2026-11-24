@@ -96,7 +96,28 @@ export default function ReportsModule({canDo}:Props) {
   return <section className="workspace">
     <div className="section-head"><div><p className="eyebrow">REPORTS / FINANCIAL LEDGER</p><h2>আর্থিক রিপোর্ট</h2><p>লেনদেন রিপোর্ট ও সদস্যভিত্তিক Opening Statement।</p></div></div>
     <div className="form-actions"><button type="button" className={reportTab==='transactions'?'':'secondary'} onClick={()=>setReportTab('transactions')}>লেনদেন রিপোর্ট</button><button type="button" className={reportTab==='opening'?'':'secondary'} onClick={()=>{setReportTab('opening');if(!openingRows.length)void loadOpeningReport();}}>Opening Statement</button></div>
-    {reportTab==='transactions'&&<>{transactionBlock}</>}
+    {reportTab==='transactions'&&<>
+    {notice&&<div className="notice">{notice}</div>}
+    <section className="panel">
+      <div className="form-grid">
+        <label>শুরুর তারিখ<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
+        <label>শেষ তারিখ<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
+        <label>রিপোর্টের ধরন<select value={kind} onChange={e=>setKind(e.target.value)}><option value="all">সকল লেনদেন</option><option value="savings">শুধু সঞ্চয়</option><option value="loan">শুধু ঋণ আদায়</option></select></label>
+      </div>
+      <div className="form-actions"><button type="button" onClick={()=>void load()} disabled={loading}>{loading?'লোড হচ্ছে...':'রিপোর্ট দেখুন'}</button><button type="button" className="secondary" onClick={exportCsv} disabled={!visible.length}>CSV ডাউনলোড</button></div>
+    </section>
+    <div className="stats-grid">
+      <article className="stat-card"><span>সঞ্চয় জমা</span><strong>{money(totals.deposits)}</strong></article>
+      <article className="stat-card"><span>সঞ্চয় উত্তোলন</span><strong>{money(totals.withdrawals)}</strong></article>
+      <article className="stat-card"><span>ঋণ আদায়</span><strong>{money(totals.loan)}</strong></article>
+      <article className="stat-card"><span>মোট লেনদেন</span><strong>{totals.count.toLocaleString('en-BD')}</strong></article>
+    </div>
+    <section className="panel"><h3>লেনদেনের বিবরণ</h3><div className="table-wrap"><table><thead><tr><th>তারিখ</th><th>সদস্য কোড</th><th>সদস্যের নাম</th><th>খাত</th><th>লেনদেন</th><th>পরিমাণ</th><th>রেফারেন্স</th></tr></thead><tbody>
+      {visible.map(x=><tr key={x.id}><td>{x.date}</td><td>{x.memberCode}</td><td>{x.member}</td><td>{x.category}</td><td>{x.type}</td><td>{money(x.amount)}</td><td>{x.reference||'—'}</td></tr>)}
+      {!visible.length&&<tr><td colSpan={7} className="empty">কোনো তথ্য নেই। তারিখ নির্বাচন করে রিপোর্ট দেখুন।</td></tr>}
+    </tbody></table></div></section>
+
+     </>}
     {reportTab==='opening'&&<section className="panel">
       <div className="form-actions" style={{justifyContent:'space-between',alignItems:'center'}}><h3>সদস্যভিত্তিক Opening Statement</h3><button type="button" className="secondary" disabled={openingLoading} onClick={()=>void loadOpeningReport()}>{openingLoading?'লোড হচ্ছে...':'রিফ্রেশ'}</button></div>
       <p className="muted">ডাটাবেজে সংরক্ষিত GS, LTS-New, Optional Savings ও Opening Loan-এর সারসংক্ষেপ।</p>
