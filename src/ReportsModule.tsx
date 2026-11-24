@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase';
 
 type Props = { canDo: (moduleKey: string, action: 'view'|'create'|'update'|'delete') => boolean };
 type ReportRow = { id:string; date:string; member:string; memberCode:string; category:string; type:string; amount:number; reference:string };
+type OpeningReportRow = { member_id:string; member_code:string; full_name:string; opening_date:string|null; gs:number; lts:number; optional:number; optional_date:string|null; loan_count:number; loan_balance:number };
 
 const today = () => { const d=new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'); };
 const money = (n:number) => '৳'+Number(n||0).toLocaleString('en-BD',{maximumFractionDigits:2});
@@ -15,6 +16,11 @@ export default function ReportsModule({canDo}:Props) {
   const [loading,setLoading]=useState(false);
   const [notice,setNotice]=useState('');
   const [kind,setKind]=useState('all');
+  const [reportTab,setReportTab]=useState<'transactions'|'opening'>('transactions');
+  const [openingRows,setOpeningRows]=useState<OpeningReportRow[]>([]);
+  const [openingLoading,setOpeningLoading]=useState(false);
+  const [openingNotice,setOpeningNotice]=useState('');
+  const [openingSearch,setOpeningSearch]=useState('');
 
   useEffect(()=>{ void load(); },[]);
 
@@ -49,6 +55,27 @@ export default function ReportsModule({canDo}:Props) {
     if(!result.length)setNotice('নির্বাচিত সময়ে কোনো লেনদেন পাওয়া যায়নি।');
   }
 
+  async function loadOpeningReport(){
+    if(!supabase||!canDo('reports','view'))return;
+    setOpeningLoading(true);setOpeningNotice('');
+    const [membersRes,balancesRes,loansRes]=await Promise.all([
+      supabase.from('members').select('id,member_code,full_name').eq('is_active',true).order('member_code'),
+      supabase.from('member_savings_opening_balances').select('member_id,opening_date,gs_balance,lts_new_balance,optional_balance,optional_opening_date'),
+      supabase.from('member_opening_loans').select('member_id,outstanding_balance')
+    ]);
+    const error=membersRes.error||balancesRes.error||loansRes.error;
+    if(error){setOpeningNotice('Opening Statement লোড হয়নি: '+error.message);setOpeningLoading(false);return;}
+    const balances=new Map((balancesRes.data||[]).map((x:any)=>[x.member_id,x]));
+    const loanMap=new Map<string,{count:number;balance:number}>();
+    for(const x of loansRes.data||[]){const v=loanMap.get(x.member_id)||{count:0,balance:0};v.count++;v.balance+=Number(x.outstanding_balance||0);loanMap.set(x.member_id,v);}
+    const result:OpeningReportRow[]=(membersRes.data||[]).map((m:any)=>{
+      const b:any=balances.get(m.id);const l=loanMap.get(m.id)||{count:0,balance:0};
+      return {member_id:m.id,member_code:m.member_code,full_name:m.full_name,opening_date:b?.opening_date||null,gs:Number(b?.gs_balance||0),lts:Number(b?.lts_new_balance||0),optional:Number(b?.optional_balance||0),optional_date:b?.optional_opening_date||null,loan_count:l.count,loan_balance:l.balance};
+    }).filter(x=>x.opening_date||x.gs||x.lts||x.optional||x.loan_count);
+    setOpeningRows(result);setOpeningLoading(false);
+    if(!result.length)setOpeningNotice('কোনো Opening Data পাওয়া যায়নি।');
+  }
+
   const visible=useMemo(()=>rows.filter(x=>kind==='all'||(kind==='savings'?['GS','LTS-New','Optional'].includes(x.category):(x.category.includes('ঋণ')))),[rows,kind]);
   const totals=useMemo(()=>{
     const deposits=visible.filter(x=>x.type==='জমা').reduce((s,x)=>s+x.amount,0);
@@ -67,25 +94,18 @@ export default function ReportsModule({canDo}:Props) {
 
   if(!canDo('reports','view'))return <section className="panel"><h2>Reports</h2><p>এই রিপোর্ট দেখার অনুমতি নেই।</p></section>;
   return <section className="workspace">
-    <div className="section-head"><div><p className="eyebrow">REPORTS / FINANCIAL LEDGER</p><h2>আর্থিক লেনদেন রিপোর্ট</h2><p>সঞ্চয় ও ঋণ আদায়ের সদস্যভিত্তিক হিসাব।</p></div></div>
-    {notice&&<div className="notice">{notice}</div>}
-    <section className="panel">
-      <div className="form-grid">
-        <label>শুরুর তারিখ<input type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
-        <label>শেষ তারিখ<input type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>
-        <label>রিপোর্টের ধরন<select value={kind} onChange={e=>setKind(e.target.value)}><option value="all">সকল লেনদেন</option><option value="savings">শুধু সঞ্চয়</option><option value="loan">শুধু ঋণ আদায়</option></select></label>
-      </div>
-      <div className="form-actions"><button type="button" onClick={()=>void load()} disabled={loading}>{loading?'লোড হচ্ছে...':'রিপোর্ট দেখুন'}</button><button type="button" className="secondary" onClick={exportCsv} disabled={!visible.length}>CSV ডাউনলোড</button></div>
-    </section>
-    <div className="stats-grid">
-      <article className="stat-card"><span>সঞ্চয় জমা</span><strong>{money(totals.deposits)}</strong></article>
-      <article className="stat-card"><span>সঞ্চয় উত্তোলন</span><strong>{money(totals.withdrawals)}</strong></article>
-      <article className="stat-card"><span>ঋণ আদায়</span><strong>{money(totals.loan)}</strong></article>
-      <article className="stat-card"><span>মোট লেনদেন</span><strong>{totals.count.toLocaleString('en-BD')}</strong></article>
-    </div>
-    <section className="panel"><h3>লেনদেনের বিবরণ</h3><div className="table-wrap"><table><thead><tr><th>তারিখ</th><th>সদস্য কোড</th><th>সদস্যের নাম</th><th>খাত</th><th>লেনদেন</th><th>পরিমাণ</th><th>রেফারেন্স</th></tr></thead><tbody>
-      {visible.map(x=><tr key={x.id}><td>{x.date}</td><td>{x.memberCode}</td><td>{x.member}</td><td>{x.category}</td><td>{x.type}</td><td>{money(x.amount)}</td><td>{x.reference||'—'}</td></tr>)}
-      {!visible.length&&<tr><td colSpan={7} className="empty">কোনো তথ্য নেই। তারিখ নির্বাচন করে রিপোর্ট দেখুন।</td></tr>}
-    </tbody></table></div></section>
+    <div className="section-head"><div><p className="eyebrow">REPORTS / FINANCIAL LEDGER</p><h2>আর্থিক রিপোর্ট</h2><p>লেনদেন রিপোর্ট ও সদস্যভিত্তিক Opening Statement।</p></div></div>
+    <div className="form-actions"><button type="button" className={reportTab==='transactions'?'':'secondary'} onClick={()=>setReportTab('transactions')}>লেনদেন রিপোর্ট</button><button type="button" className={reportTab==='opening'?'':'secondary'} onClick={()=>{setReportTab('opening');if(!openingRows.length)void loadOpeningReport();}}>Opening Statement</button></div>
+    {reportTab==='transactions'&&<>{transactionBlock}</>}
+    {reportTab==='opening'&&<section className="panel">
+      <div className="form-actions" style={{justifyContent:'space-between',alignItems:'center'}}><h3>সদস্যভিত্তিক Opening Statement</h3><button type="button" className="secondary" disabled={openingLoading} onClick={()=>void loadOpeningReport()}>{openingLoading?'লোড হচ্ছে...':'রিফ্রেশ'}</button></div>
+      <p className="muted">ডাটাবেজে সংরক্ষিত GS, LTS-New, Optional Savings ও Opening Loan-এর সারসংক্ষেপ।</p>
+      <label>সদস্য খুঁজুন<input value={openingSearch} onChange={e=>setOpeningSearch(e.target.value)} placeholder="সদস্য কোড বা নাম"/></label>
+      {openingNotice&&<div className="notice">{openingNotice}</div>}
+      {openingLoading?<p className="muted">তথ্য লোড হচ্ছে...</p>:<div className="table-wrap"><table><thead><tr><th>সদস্য কোড</th><th>সদস্যের নাম</th><th>Opening Date</th><th>GS</th><th>LTS-New</th><th>Optional</th><th>Optional Date</th><th>ঋণ সংখ্যা</th><th>মোট ঋণ অবশিষ্ট</th><th>মোট সঞ্চয়</th></tr></thead><tbody>
+        {openingRows.filter(x=>(x.member_code+' '+x.full_name).toLowerCase().includes(openingSearch.trim().toLowerCase())).map(x=><tr key={x.member_id}><td>{x.member_code}</td><td>{x.full_name}</td><td>{x.opening_date||'—'}</td><td>{money(x.gs)}</td><td>{money(x.lts)}</td><td>{money(x.optional)}</td><td>{x.optional_date||'—'}</td><td>{x.loan_count}</td><td>{money(x.loan_balance)}</td><td><b>{money(x.gs+x.lts+x.optional)}</b></td></tr>)}
+        {!openingRows.length&&<tr><td colSpan={10} className="empty">কোনো Opening Data নেই।</td></tr>}
+      </tbody></table></div>}
+    </section>}
   </section>;
 }
