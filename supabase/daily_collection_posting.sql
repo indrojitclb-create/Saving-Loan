@@ -476,7 +476,8 @@ begin
       where m.branch_id=p_branch_id and t.transaction_date>=p_month_start
         and t.transaction_date<(p_month_start+interval '1 month')),0),
     'loan_due',coalesce((select sum(greatest(0,sc.total_due-
-        coalesce(sc.principal_paid,0)-coalesce(sc.service_charge_paid,0)))
+        coalesce((select sum(t.amount) from public.loan_transactions t
+          where t.schedule_id=sc.id and t.transaction_date<(p_month_start+interval '1 month')),0)))
       from public.loan_installment_schedule sc
       join public.loan_accounts a on a.id=sc.loan_id join public.members m on m.id=a.member_id
       where m.branch_id=p_branch_id and sc.due_date>=p_month_start
