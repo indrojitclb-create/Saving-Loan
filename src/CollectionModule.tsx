@@ -208,8 +208,8 @@ export default function CollectionModule({samities,canDo}:Props) {
     const loanIds=memberLoans.map(x=>x.id);
     const openingIds=memberOpeningLoans.map(x=>x.id);
     const openingSavingsRow=openingSavings.find(x=>x.member_id===m.id&&x.opening_date<month+'-01');
-    const gsOpen=Number(openingSavingsRow?.gs_balance||0)+memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
-    const ltsOpen=Number(openingSavingsRow?.lts_new_balance||0)+memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const gsOpen=Number(openingSavingsRow?.gs_balance||0)+memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const ltsOpen=Number(openingSavingsRow?.lts_new_balance||0)+memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const gsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='GS'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const ltsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const optionalBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='Optional'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
