@@ -203,7 +203,7 @@ export default function CollectionModule({samities,canDo}:Props) {
 
   const rows=useMemo(()=>members.map(m=>{
     const memberSavings=savings.filter(x=>x.member_id===m.id);
-    const memberLoans=loans.filter(x=>x.member_id===m.id&&x.status==='active'&&x.disbursement_date<=endOfMonth);
+    const memberLoans=loans.filter(x=>x.member_id===m.id&&x.disbursement_date<=endOfMonth);
     const memberOpeningLoans=openingLoans.filter(x=>x.member_id===m.id&&x.disbursement_date<=endOfMonth);
     const loanIds=memberLoans.map(x=>x.id);
     const openingIds=memberOpeningLoans.map(x=>x.id);
