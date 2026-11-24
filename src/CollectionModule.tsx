@@ -171,7 +171,7 @@ export default function CollectionModule({samities,canDo}:Props) {
       if(!ids.length){if(!cancelled){setMembers([]);setSavings([]);setOpeningSavings([]);setLoans([]);setOpeningLoans([]);setOpeningLoanSchedule([]);setOpeningLoanTx([]);setLoanTx([]);setLoanSchedule([]);setLoading(false);}return;}
       const [sr,openingSavingsResult,lr,or,cr,hr,hs,er]=await Promise.all([
         supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category').in('member_id',ids).lte('transaction_date',end).order('transaction_date'),
-        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date').in('member_id',ids).lt('opening_date',start),
+        supabase.from('member_savings_opening_balances').select('member_id,gs_balance,lts_new_balance,optional_balance,opening_date,optional_opening_date').in('member_id',ids),
         supabase.from('loan_accounts').select('id,loan_no,member_id,principal,total_repayable,total_service_charge,disbursement_date,status').in('member_id',ids).order('disbursement_date'),
         supabase.from('member_opening_loans').select('id,loan_no,member_id,principal_amount,service_charge_amount,amount_repaid_to_date,outstanding_balance,overdue_balance,next_collectible_balance,disbursement_date,current_status').in('member_id',ids).order('disbursement_date'),
         supabase.from('samity_week_closures').select('closure_date').eq('samity_id',samityId).gte('closure_date',start).lte('closure_date',end),
@@ -207,9 +207,9 @@ export default function CollectionModule({samities,canDo}:Props) {
     const memberOpeningLoans=openingLoans.filter(x=>x.member_id===m.id&&x.disbursement_date<=endOfMonth);
     const loanIds=memberLoans.map(x=>x.id);
     const openingIds=memberOpeningLoans.map(x=>x.id);
-    const openingSavingsRow=openingSavings.find(x=>x.member_id===m.id&&x.opening_date<month+'-01');
-    const gsOpen=Number(openingSavingsRow?.gs_balance||0)+memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
-    const ltsOpen=Number(openingSavingsRow?.lts_new_balance||0)+memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const openingSavingsRow=openingSavings.find(x=>x.member_id===m.id);
+    const gsOpen=(openingSavingsRow?.opening_date<month+'-01'?Number(openingSavingsRow?.gs_balance||0):0)+memberSavings.filter(x=>x.savings_category==='GS'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
+    const ltsOpen=(openingSavingsRow?.opening_date<month+'-01'?Number(openingSavingsRow?.lts_new_balance||0):0)+memberSavings.filter(x=>x.savings_category==='LTS-New'&&x.transaction_date>=(openingSavingsRow?.opening_date||'0001-01-01')&&x.transaction_date<month+'-01').reduce((s,x)=>s+(x.transaction_type==='deposit'?1:-1)*Number(x.amount),0);
     const gsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='GS'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const ltsBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.savings_category==='LTS-New'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
     const optionalBy=meetingDates.map(d=>memberSavings.filter(x=>x.transaction_date===d&&x.transaction_date>=(openingSavingsRow?.optional_opening_date||openingSavingsRow?.opening_date||'0001-01-01')&&x.savings_category==='Optional'&&x.transaction_type==='deposit').reduce((s,x)=>s+Number(x.amount),0));
