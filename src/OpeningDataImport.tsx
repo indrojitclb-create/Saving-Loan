@@ -55,6 +55,7 @@ const aliases: Record<string,string[]> = {
   loan_no:['loan no','loan_no','loan code','ঋণ নম্বর','ঋণ নং'],
   disbursement_date:['disbursement date','disbursement_date','disburse date','ঋণ বিতরণের তারিখ','বিতরণের তারিখ'],
   first_repayment_date:['first repayment date','first_repayment_date','প্রথম কিস্তির তারিখ'],
+  total_week:['total week','total_week','কিস্তির সংখ্যা','মোট কিস্তি','মোট সপ্তাহ'],
   loan_balance:['loan balance','loan_balance','মোট অবশিষ্ট ঋণ'],
   due_amount:['due amount','due_amount','বকেয়া কিস্তি','বকেয়া কিস্তি'],
   principal_recovery:['principal recovery','principal_recovery','আসল আদায়','আসল আদায়'],
@@ -85,9 +86,9 @@ const dateValue = (v:any) => {
 const fieldList: Record<Tab,string[]> = {
   member:['member_code','father_name','mother_name','spouse_name','admission_date','date_of_birth','marital_status','education_level','phone','nationality','smart_id','national_id','birth_registration_no','tin_no','profession','religion','member_type','present_union','present_house_street','family_contact_no','permanent_house_street','permanent_contact_no','family_member_count','yearly_income','land_area','land_area_unit','remarks'],
   savings:['member_code','opening_date','gs_balance','lts_new_balance','optional_balance','optional_opening_date','optional_monthly_installment_amount','optional_installments_paid'],
-  loan:['member_code','loan_no','disbursement_date','first_repayment_date','project_name','loan_cycle','principal_amount','principal_recovery','service_charge_recovery','loan_balance','due_amount','service_charge_amount','amount_repaid_to_date','overdue_balance','last_installment_no','last_installment_date','current_status']
+  loan:['member_code','loan_no','disbursement_date','first_repayment_date','total_week','project_name','loan_cycle','principal_amount','principal_recovery','service_charge_recovery','loan_balance','due_amount','service_charge_amount','amount_repaid_to_date','overdue_balance','last_installment_no','last_installment_date','current_status']
 };
-const labels: Record<string,string> = {member_code:'সদস্য কোড',gs_balance:'GS স্থিতি',lts_new_balance:'LTS-New স্থিতি',optional_balance:'Optional স্থিতি',opening_date:'ওপেনিং তারিখ',loan_no:'ঋণ নম্বর',disbursement_date:'ঋণ বিতরণের তারিখ',first_repayment_date:'প্রথম কিস্তির তারিখ',project_name:'প্রকল্প',principal_amount:'আসল ঋণ',service_charge_amount:'সেবামূল্য',amount_repaid_to_date:'এ পর্যন্ত আদায়',overdue_balance:'বকেয়া কিস্তি',loan_balance:'মোট অবশিষ্ট ঋণ',due_amount:'বকেয়া কিস্তি',principal_recovery:'আসল আদায়',service_charge_recovery:'সেবামূল্য আদায়'};
+const labels: Record<string,string> = {member_code:'সদস্য কোড',gs_balance:'GS স্থিতি',lts_new_balance:'LTS-New স্থিতি',optional_balance:'Optional স্থিতি',opening_date:'ওপেনিং তারিখ',loan_no:'ঋণ নম্বর',disbursement_date:'ঋণ বিতরণের তারিখ',first_repayment_date:'প্রথম কিস্তির তারিখ',total_week:'মোট কিস্তি/সপ্তাহ',project_name:'প্রকল্প',principal_amount:'আসল ঋণ',service_charge_amount:'সেবামূল্য',amount_repaid_to_date:'এ পর্যন্ত আদায়',overdue_balance:'বকেয়া কিস্তি',loan_balance:'মোট অবশিষ্ট ঋণ',due_amount:'বকেয়া কিস্তি',principal_recovery:'আসল আদায়',service_charge_recovery:'সেবামূল্য আদায়'};
 export default function OpeningDataImport({tab,members,samities,canDo,userId,onDone}:Props){
   const [rows,setRows]=useState<ImportRow[]>([]);
   const [fileName,setFileName]=useState('');
@@ -225,9 +226,9 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           else if(![data.gs_balance,data.lts_new_balance,data.optional_balance].every(v=>Number.isFinite(num(v))&&num(v)>=0)||total<=0)error='সঞ্চয় স্থিতি শূন্যের বেশি এবং ঋণাত্মক নয় হতে হবে';
           else if(num(data.optional_balance)>0&&(!dateValue(data.optional_opening_date)||(data.optional_monthly_installment_amount!==undefined&&num(data.optional_monthly_installment_amount)<=0)||(data.optional_installments_paid!==undefined&&(num(data.optional_installments_paid)<0||!Number.isInteger(num(data.optional_installments_paid))))))error='Optional Savings-এর তারিখ, মাসিক জমা ও কিস্তি সংখ্যা যাচাই করুন';
         }else{
-          const principal=num(data.principal_amount),charge=num(data.service_charge_amount),repaid=num(data.amount_repaid_to_date),arrears=num(data.overdue_balance),cycle=num(data.loan_cycle||1),last=num(data.last_installment_no||0);
+          const principal=num(data.principal_amount),charge=num(data.service_charge_amount),repaid=num(data.amount_repaid_to_date),arrears=num(data.overdue_balance),cycle=num(data.loan_cycle||1),last=num(data.last_installment_no||0),totalWeek=num(data.total_week||46);
           if(!String(data.loan_no||'').trim()||!dateValue(data.disbursement_date)||!String(data.project_name||'').trim())error='ঋণ নম্বর, বিতরণের তারিখ ও প্রকল্প আবশ্যক';
-          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||arrears>Math.max(0,principal+charge-repaid)||cycle<1||!Number.isInteger(cycle)||last<0||last>46||!Number.isInteger(last))error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
+          else if(![principal,charge,repaid,arrears,cycle,last].every(Number.isFinite)||principal<1000||principal>200000||principal%1000!==0||charge<0||repaid<0||repaid>principal+charge||arrears<0||arrears>Math.max(0,principal+charge-repaid)||cycle<1||!Number.isInteger(cycle)||totalWeek<1||totalWeek>46||!Number.isInteger(totalWeek)||last<0||last>totalWeek||!Number.isInteger(last))error='ঋণের পরিমাণ/দফা/কিস্তির তথ্য সঠিক নয়';
           else if(last>0&&!dateValue(data.last_installment_date))error='সর্বশেষ কিস্তির তারিখ আবশ্যক';
           else if(data.current_status==='closed'&&principal+charge-repaid>0)error='অবশিষ্ট স্থিতি থাকলে ঋণ বন্ধ করা যাবে না';
         }
@@ -288,7 +289,7 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
         for(const r of rows){
           const d=r.data,m=members.find(x=>x.id===r.member_id),samity=samities.find(x=>x.id===m?.samity_id);
           if(!samity||!Number.isInteger(Number(samity.meeting_day))){errors.push('লাইন '+r.line+': সমিতির সভার দিন পাওয়া যায়নি');continue;}
-          const principal=num(d.principal_amount),charge=num(d.service_charge_amount),repaid=num(d.amount_repaid_to_date),arrears=num(d.overdue_balance),cycle=num(d.loan_cycle||1),last=num(d.last_installment_no||0);
+          const principal=num(d.principal_amount),charge=num(d.service_charge_amount),repaid=num(d.amount_repaid_to_date),arrears=num(d.overdue_balance),cycle=num(d.loan_cycle||1),last=num(d.last_installment_no||0),totalWeek=num(d.total_week||46);
           const remaining=Math.max(0,principal+charge-repaid),collectible=Math.max(0,remaining-arrears);
           const closedDates=closures.filter((x:any)=>x.samity_id===samity.id).map((x:any)=>x.closure_date);
           for(const h of holidays.filter((h:any)=>h.scope==='organization'||(h.scope==='branch'&&h.branch_id===samity.branch_id)||(h.scope==='samity'&&h.samity_id===samity.id))){
@@ -298,13 +299,13 @@ export default function OpeningDataImport({tab,members,samities,canDo,userId,onD
           if(friday){const day=new Date(dateValue(d.disbursement_date)+'T12:00:00'),end=new Date(day);end.setDate(end.getDate()+46*7+60);for(;day<=end;day.setDate(day.getDate()+1))if(day.getDay()===5)closedDates.push([day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-'));}
           let nextDate:string|null=null;let schedule:any[]=[];
           const status=(d.current_status||'active') as 'active'|'closed'|'written_off';
-          if(status==='active'&&last<46&&collectible>0){
+          if(status==='active'&&last<totalWeek&&collectible>0){
             try{
               const all=calculateLoanSchedule(principal);let first:string;
               if(last===0)first=dateValue(d.first_repayment_date)||calculateFirstInstallmentDate(dateValue(d.disbursement_date),Number(samity.meeting_day),closedDates);
               else{const day=new Date(dateValue(d.last_installment_date)+'T12:00:00');if(Number.isNaN(day.getTime())||day.getDay()!==Number(samity.meeting_day))throw new Error('শেষ কিস্তির তারিখ সভার দিনের সঙ্গে মেলে না');day.setDate(day.getDate()+7);while(closedDates.includes([day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-')))day.setDate(day.getDate()+7);first=[day.getFullYear(),String(day.getMonth()+1).padStart(2,'0'),String(day.getDate()).padStart(2,'0')].join('-');}
-              const dates=buildInstallmentDates(first,Number(samity.meeting_day),closedDates).slice(0,46-last);
-              const rest=all.filter(x=>x.weekNo>last),raw=rest.reduce((s,x)=>s+x.totalDue,0);let allocated=0;
+              const dates=buildInstallmentDates(first,Number(samity.meeting_day),closedDates).slice(0,totalWeek-last);
+              const rest=all.filter(x=>x.weekNo>last&&x.weekNo<=totalWeek),raw=rest.reduce((s,x)=>s+x.totalDue,0);let allocated=0;
               schedule=rest.map((x,i)=>{const total=i===rest.length-1?Math.max(0,collectible-allocated):collectible*x.totalDue/raw;allocated+=total;const p=x.totalDue?total*x.principalDue/x.totalDue:0;return {installment_no:x.weekNo,due_date:dates[i],principal_due:p,service_charge_due:total-p,total_due:total,status:'due'};});
               nextDate=dates[0]||null;
             }catch(err){errors.push('লাইন '+r.line+': '+(err instanceof Error?err.message:'কিস্তি সিডিউল তৈরি হয়নি'));continue;}
