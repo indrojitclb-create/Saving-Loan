@@ -36,7 +36,7 @@ export default function ReportsModule({canDo}:Props) {
     ]);
     const error=membersRes.error||savingsRes.error||loanRes.error||openingRes.error;
     if(error){setNotice('রিপোর্ট লোড হয়নি: '+error.message);setLoading(false);return;}
-    const memberMap=new Map((membersRes.data||[]).map((m:any)=>[m.id,m]));
+    const memberMap=new Map(members.map((m:any)=>[m.id,m]));
     const result:ReportRow[]=[];
     for(const x of savingsRes.data||[]){
       const m:any=memberMap.get(x.member_id);
@@ -58,16 +58,31 @@ export default function ReportsModule({canDo}:Props) {
   async function loadOpeningReport(){
     if(!supabase||!canDo('reports','view'))return;
     setOpeningLoading(true);setOpeningNotice('');
-    const [membersRes,balancesRes,loansRes]=await Promise.all([
-      supabase.from('members').select('id,member_code,full_name').eq('is_active',true).order('member_code'),
-      supabase.from('member_savings_opening_balances').select('member_id,opening_date,gs_balance,lts_new_balance,optional_balance,optional_opening_date'),
-      supabase.from('member_opening_loans').select('member_id,outstanding_balance')
-    ]);
-    const error=membersRes.error||balancesRes.error||loansRes.error;
-    if(error){setOpeningNotice('Opening Statement লোড হয়নি: '+error.message);setOpeningLoading(false);return;}
-    const balances=new Map((balancesRes.data||[]).map((x:any)=>[x.member_id,x]));
+    const fetchAll = async (buildQuery:(from:number,to:number)=>any) => {
+      const all:any[]=[];let offset=0;const pageSize=500;
+      while(true){
+        const {data,error}=await buildQuery(offset,offset+pageSize-1);
+        if(error)throw error;
+        const page=data||[];all.push(...page);
+        if(page.length<pageSize)break;
+        offset+=pageSize;
+      }
+      return all;
+    };
+    let members:any[]=[],balancesData:any[]=[],loansData:any[]=[];
+    try{
+      [members,balancesData,loansData]=await Promise.all([
+        fetchAll((a,b)=>supabase!.from('members').select('id,member_code,full_name').eq('is_active',true).order('member_code').range(a,b)),
+        fetchAll((a,b)=>supabase!.from('member_savings_opening_balances').select('member_id,opening_date,gs_balance,lts_new_balance,optional_balance,optional_opening_date').range(a,b)),
+        fetchAll((a,b)=>supabase!.from('member_opening_loans').select('member_id,outstanding_balance').range(a,b))
+      ]);
+    }catch(error){
+      setOpeningNotice('Opening Statement লোড হয়নি: '+(error instanceof Error?error.message:'ডাটাবেজ থেকে তথ্য পড়া যায়নি'));
+      setOpeningLoading(false);return;
+    }
+    const balances=new Map(balancesData.map((x:any)=>[x.member_id,x]));
     const loanMap=new Map<string,{count:number;balance:number}>();
-    for(const x of loansRes.data||[]){const v=loanMap.get(x.member_id)||{count:0,balance:0};v.count++;v.balance+=Number(x.outstanding_balance||0);loanMap.set(x.member_id,v);}
+    for(const x of loansData){const v=loanMap.get(x.member_id)||{count:0,balance:0};v.count++;v.balance+=Number(x.outstanding_balance||0);loanMap.set(x.member_id,v);}
     const result:OpeningReportRow[]=(membersRes.data||[]).map((m:any)=>{
       const b:any=balances.get(m.id);const l=loanMap.get(m.id)||{count:0,balance:0};
       return {member_id:m.id,member_code:m.member_code,full_name:m.full_name,opening_date:b?.opening_date||null,gs:Number(b?.gs_balance||0),lts:Number(b?.lts_new_balance||0),optional:Number(b?.optional_balance||0),optional_date:b?.optional_opening_date||null,loan_count:l.count,loan_balance:l.balance};
