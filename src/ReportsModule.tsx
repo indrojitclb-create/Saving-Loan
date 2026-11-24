@@ -28,25 +28,31 @@ export default function ReportsModule({canDo}:Props) {
     if(!supabase||!canDo('reports','view'))return;
     if(from>to){setNotice('শুরুর তারিখ শেষ তারিখের পরে হতে পারবে না।');return;}
     setLoading(true);setNotice('');
-    const [membersRes,savingsRes,loanRes,openingRes]=await Promise.all([
-      supabase.from('members').select('id,member_code,full_name'),
-      supabase.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category,reference_no').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false}),
-      supabase.from('loan_transactions').select('id,loan_id,transaction_date,amount,reference_no,loan_accounts!inner(member_id,loan_no)').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false}),
-      supabase.from('member_opening_loan_transactions').select('id,opening_loan_id,transaction_date,amount,member_opening_loans!inner(member_id,loan_no)').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false})
-    ]);
-    const error=membersRes.error||savingsRes.error||loanRes.error||openingRes.error;
-    if(error){setNotice('রিপোর্ট লোড হয়নি: '+error.message);setLoading(false);return;}
-    const memberMap=new Map((membersRes.data||[]).map((m:any)=>[m.id,m]));
+    const fetchAll=async(buildQuery:(a:number,b:number)=>any)=>{
+      const all:any[]=[];let offset=0;const pageSize=500;
+      while(true){const {data,error}=await buildQuery(offset,offset+pageSize-1);if(error)throw error;const page=data||[];all.push(...page);if(page.length<pageSize)break;offset+=pageSize;}
+      return all;
+    };
+    let members:any[]=[],savingsData:any[]=[],loanData:any[]=[],openingData:any[]=[];
+    try{
+      [members,savingsData,loanData,openingData]=await Promise.all([
+        fetchAll((a,b)=>supabase!.from('members').select('id,member_code,full_name').range(a,b)),
+        fetchAll((a,b)=>supabase!.from('savings_transactions').select('id,member_id,transaction_date,transaction_type,amount,savings_category,reference_no').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false}).range(a,b)),
+        fetchAll((a,b)=>supabase!.from('loan_transactions').select('id,loan_id,transaction_date,amount,reference_no,loan_accounts!inner(member_id,loan_no)').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false}).range(a,b)),
+        fetchAll((a,b)=>supabase!.from('member_opening_loan_transactions').select('id,opening_loan_id,transaction_date,amount,member_opening_loans!inner(member_id,loan_no)').gte('transaction_date',from).lte('transaction_date',to).order('transaction_date',{ascending:false}).range(a,b))
+      ]);
+    }catch(error){setNotice('রিপোর্ট লোড হয়নি: '+(error instanceof Error?error.message:'ডাটাবেজ থেকে তথ্য পড়া যায়নি'));setLoading(false);return;}
+    const memberMap=new Map(members.map((m:any)=>[m.id,m]));
     const result:ReportRow[]=[];
-    for(const x of savingsRes.data||[]){
+    for(const x of savingsData){
       const m:any=memberMap.get(x.member_id);
       result.push({id:'s-'+x.id,date:x.transaction_date,member:m?.full_name||'—',memberCode:m?.member_code||'—',category:x.savings_category||'Savings',type:x.transaction_type==='deposit'?'জমা':'উত্তোলন',amount:Number(x.amount),reference:x.reference_no||''});
     }
-    for(const x of loanRes.data||[]){
+    for(const x of loanData){
       const rel:any=(x as any).loan_accounts; const m:any=memberMap.get(rel?.member_id);
       result.push({id:'l-'+x.id,date:x.transaction_date,member:m?.full_name||'—',memberCode:m?.member_code||'—',category:'নতুন ঋণ আদায়',type:'আদায়',amount:Number(x.amount),reference:rel?.loan_no||x.reference_no||''});
     }
-    for(const x of openingRes.data||[]){
+    for(const x of openingData){
       const rel:any=(x as any).member_opening_loans; const m:any=memberMap.get(rel?.member_id);
       result.push({id:'o-'+x.id,date:x.transaction_date,member:m?.full_name||'—',memberCode:m?.member_code||'—',category:'প্রারম্ভিক ঋণ আদায়',type:'আদায়',amount:Number(x.amount),reference:rel?.loan_no||''});
     }
