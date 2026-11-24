@@ -64,6 +64,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
   const [reviewSearch,setReviewSearch]=useState('');
   const [reviewLoading,setReviewLoading]=useState(false);
   const [reviewNotice,setReviewNotice]=useState('');
+  const [reviewRefresh,setReviewRefresh]=useState(0);
 
   const canView = openingOnly ? (canDo('opening_data','view') || canDo('opening_data','create') || canDo('opening_data','update')) : (canDo('savings','view') || canDo('savings','create'));
   const canCreate = canDo('savings','create');
@@ -104,7 +105,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
       } finally { if(live)setReviewLoading(false); }
     })();
     return()=>{live=false;};
-  },[openingOnly,members]);
+  },[openingOnly,members,reviewRefresh]);
   useEffect(() => {
     let live = true;
     (async () => {
@@ -421,7 +422,7 @@ export default function SavingsModule({ samities, canDo, openingOnly = false }: 
     {openingOnly && <div className="form-actions" style={{margin:'16px 0'}}><button type="button" className={openingTab==='member'?'':'secondary'} onClick={()=>setOpeningTab('member')}>সদস্যের সার্বিক তথ্য</button><button type="button" className={openingTab==='savings'?'':'secondary'} onClick={()=>setOpeningTab('savings')}>সঞ্চয় ওপেনিং</button><button type="button" className={openingTab==='loan'?'':'secondary'} onClick={()=>setOpeningTab('loan')}>ঋণ ওপেনিং</button></div>}
     {openingOnly && <OpeningDataImport tab={openingTab} members={members} samities={samities} canDo={canDo} userId={userId} onDone={refreshAfterOpeningImport}/>}
     {openingOnly && <section className="panel">
-      <h3>সংরক্ষিত Opening Data — সদস্যভিত্তিক পর্যালোচনা</h3>
+      <div className="form-actions" style={{justifyContent:'space-between',alignItems:'center'}}><h3>সংরক্ষিত Opening Data — সদস্যভিত্তিক পর্যালোচনা</h3><button type="button" className="secondary" disabled={reviewLoading} onClick={()=>setReviewRefresh(x=>x+1)}>{reviewLoading?'লোড হচ্ছে...':'তথ্য রিফ্রেশ করুন'}</button></div>
       <p className="muted">এই তালিকা সরাসরি ডাটাবেজে সংরক্ষিত Opening Savings ও Opening Loan রেকর্ড থেকে তৈরি। এখানে নতুন করে কোনো তথ্য লেখা বা পরিবর্তন করা হয় না।</p>
       <div className="form-grid"><label>সদস্য খুঁজুন<input value={reviewSearch} onChange={e=>setReviewSearch(e.target.value)} placeholder="সদস্য কোড বা নাম লিখুন"/></label></div>
       {reviewNotice&&<div className="notice">{reviewNotice}</div>}
